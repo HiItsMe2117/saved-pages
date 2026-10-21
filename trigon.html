@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Trigon: full-chaining arm64e with 100% reliability (part 3) | Alfie CG</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="Trigon: full-chaining arm64e with 100% reliability (part 3)" />
+<meta name="author" content="Alfie" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Completing the trilogy of Trigon blog posts by adopting a unique arm64e exploit strategy." />
+<meta property="og:description" content="Completing the trilogy of Trigon blog posts by adopting a unique arm64e exploit strategy." />
+<link rel="canonical" href="https://alfiecg.uk/2026/10/17/Trigon.html" />
+<meta property="og:url" content="https://alfiecg.uk/2026/10/17/Trigon.html" />
+<meta property="og:site_name" content="Alfie CG" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2026-10-17T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Trigon: full-chaining arm64e with 100% reliability (part 3)" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Alfie"},"dateModified":"2026-10-17T00:00:00+00:00","datePublished":"2026-10-17T00:00:00+00:00","description":"Completing the trilogy of Trigon blog posts by adopting a unique arm64e exploit strategy.","headline":"Trigon: full-chaining arm64e with 100% reliability (part 3)","mainEntityOfPage":{"@type":"WebPage","@id":"https://alfiecg.uk/2026/10/17/Trigon.html"},"url":"https://alfiecg.uk/2026/10/17/Trigon.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="https://alfiecg.uk/feed.xml" title="Alfie CG" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Alfie CG</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/">Write-ups and blog posts</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Trigon: full-chaining arm64e with 100% reliability (part 3)</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2026-10-17T00:00:00+00:00" itemprop="datePublished">Oct 17, 2026
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul>
+  <li><a href="#recap">Recap</a></li>
+  <li><a href="#prerequisite-knowledge">Prerequisite knowledge</a>
+    <ul>
+      <li><a href="#pac">PAC</a></li>
+      <li><a href="#ppl">PPL</a></li>
+    </ul>
+  </li>
+  <li><a href="#evaluation-of-the-existing-exploit">Evaluation of the existing exploit</a>
+    <ul>
+      <li><a href="#finding-the-mapping-base">Finding the mapping base</a></li>
+      <li><a href="#finding-the-kernel-base">Finding the kernel base</a></li>
+      <li><a href="#achieving-arbitrary-kernel-readwrite">Achieving arbitrary kernel read/write</a></li>
+      <li><a href="#conclusion">Conclusion</a></li>
+    </ul>
+  </li>
+  <li><a href="#finding-the-mapping-base-1">Finding the mapping base</a></li>
+  <li><a href="#finding-the-kernel-base-1">Finding the kernel base</a>
+    <ul>
+      <li><a href="#attempting-to-read-mmio">Attempting to read MMIO</a></li>
+    </ul>
+  </li>
+  <li><a href="#achieving-arbitrary-kernel-readwrite-1">Achieving arbitrary kernel read/write</a>
+    <ul>
+      <li><a href="#agx-cache-poisoning">AGX cache poisoning</a></li>
+      <li><a href="#using-the-arbitrary-write">Using the arbitrary write</a></li>
+      <li><a href="#building-full-kernel-readwrite">Building full kernel read/write</a></li>
+    </ul>
+  </li>
+  <li><a href="#building-better-kernel-readwrite-primitives">Building better kernel read/write primitives</a>
+    <ul>
+      <li><a href="#observed-issues">Observed issues</a></li>
+      <li><a href="#plan">Plan</a></li>
+      <li><a href="#socket-based-read-primitive">Socket-based read primitive</a></li>
+    </ul>
+  </li>
+  <li><a href="#conclusion-1">Conclusion</a></li>
+</ul>
+
+<p>Alright, it’s certainly been a while, but iOS 27.2 beta 3 <em>finally</em> patched the last remaining trick used in Trigon’s arm64e implementation. With that, I’d like to welcome you back to the Trigon series. This time around, we will be discussing how I exploited all arm64e chipsets running iOS 16.5 and lower.</p>
+
+<p>If you haven’t read the previous parts of this series, I would highly recommend you do. <a href="https://alfiecg.uk/2025/03/01/Trigon.html">Part one</a> covers A10 devices, and <a href="https://alfiecg.uk/2025/07/16/Trigon.html">part two</a> covers A9 and A11 devices. The source code is available <a href="https://github.com/alfiecg24/Trigon">here</a>.</p>
+
+<h1 id="recap">Recap</h1>
+<p>Okay, so in the <a href="https://alfiecg.uk/2025/07/16/Trigon.html">last post</a>, we talked about how we would gain code execution on the Always-On Processor to exploit A9 devices. By using that primitive to find the kernel base, the subsequent exploit flow would be the same as A10 and A11 devices: find the <code class="language-plaintext highlighter-rouge">pv_head_table</code> structure in kernel memory and use that to help us determine whether any physical page is a page table. Then, we would spray a large number of IOSurface objects in kernel memory and check every regular memory page for an IOSurface. Once we found one we could control, we would map it into our address space and control kernel pointers inside the structure to gain arbitrary kernel read/write primitives.</p>
+
+<p>Let’s see how much of this works on arm64e! We will split the exploit into three main components and evaluate each one individually:</p>
+<ul>
+  <li>Finding the mapping base</li>
+  <li>Finding the kernel base</li>
+  <li>Achieving arbitrary kernel read/write</li>
+</ul>
+
+<h1 id="prerequisite-knowledge">Prerequisite knowledge</h1>
+<p>arm64e SoCs have two unique mitigations that arm64 SoCs do not have: PAC and PPL. Together, these cause issues for the existing Trigon exploit on arm64e devices, so it’s important to understand what they are and how they work before continuing with the writeup.</p>
+
+<h2 id="pac">PAC</h2>
+<p>Pointer Authentication Codes (PAC) are a way of ensuring pointers cannot be overwritten or tampered with by an attacker. Historically, many exploits relied on overwriting important pointers, be it pointers to fake objects in kernel memory or instruction pointers in the form of function return addresses. PAC aimed to stop important pointers from being overwritten by attackers by including a cryptographic signature in these pointers.</p>
+
+<p>On modern ARM SoCs, the virtual address space doesn’t go beyond 48 bits in size. However, pointers are 64 bits in size, so there is bound to be a group of unused higher bits in the pointer. These were repurposed to hold the pointer’s signature. Then, special instructions were implemented to sign a pointer (add the signature), authenticate a pointer (check the signature) and strip a pointer (remove the signature and convert it back to a regular pointer). This signature cannot be faked or generated by an attacker, as it uses a proprietary variant of the QARMA algorithm, with keys that can’t be read even by the kernel.</p>
+
+<p>As an example of PAC, you could have an unsigned kernel pointer such as <code class="language-plaintext highlighter-rouge">0xFFFFFFF041410000</code>. Then, after the authentication code is added to the pointer, it may look something like <code class="language-plaintext highlighter-rouge">0x687D32F041410000</code>. Before anything tries to access the memory pointed to by this pointer, the compiler will add an instruction to check the signature in this pointer. If it’s wrong, the kernel will panic, no second chances. If it’s correct, the signature will be removed and the original value of the pointer will be restored. It can then be accessed by the CPU as a regular memory address.</p>
+
+<h2 id="ppl">PPL</h2>
+<p>The Page Protection Layer (PPL) was introduced with the A12 SoC (iPhone XS/XR) in iOS 12. It serves as a “monitor” that runs above the XNU kernel in terms of privilege. PPL protects sensitive memory and data structures, such as page tables, credentials, entitlements and trustcaches.</p>
+
+<p>PPL mode is entered via a “trampoline” that jumps up from regular XNU into PPL. On A12, they make use of a hardware feature called APRR (excellently documented by Siguza <a href="https://blog.siguza.net/APRR/">here</a>) to switch the <code class="language-plaintext highlighter-rouge">__PPLTEXT</code> segment from read-only to readable and executable and switch <code class="language-plaintext highlighter-rouge">__PPLDATA</code> from read-only to readable and writeable. On A13 and above, they use GXF (also excellently documented by Sven Peter <a href="https://blog.svenpeter.dev/posts/m1_sprr_gxf/">here</a>) - PPL runs in GL1 on A13 and GL2 on A14+. The PPL trampoline instead uses the <code class="language-plaintext highlighter-rouge">GENTER</code> instruction to enter PPL mode, with the same effect of remapping all PPL-related segments to their required permissions.</p>
+
+<p>What this means is that PPL-protected memory is read-only for the regular XNU kernel. If an attacker has kernel read/write primitives, they cannot modify their own page tables, the trustcaches, or anything else protected by PPL. Furthermore, if they also have a kernel PAC bypass, they still cannot call PPL functions, as these are not executable unless in PPL mode (which is only able to be entered via the trampoline).</p>
+
+<p>PPL makes a variety of “routines” available to the kernel, such as adding a mapping into a process’ page tables, removing a mapping from a process’s page tables, changing a mapping’s permissions, and so on. Thus, when XNU wishes to make a modification to a PPL-protected data structure, it has to call the PPL trampoline with the correct routine number in <code class="language-plaintext highlighter-rouge">X15</code>, and PPL will handle it similarly to how XNU handles a system call from userspace.</p>
+
+<p>The reason PPL is problematic for Trigon is because <code class="language-plaintext highlighter-rouge">pmap_enter_options()</code>, which maps memory into the page tables of process, will panic if the page belongs to the PPL, so we must avoid mapping any PPL memory as well.</p>
+
+<p>In iOS 17, the PPL was replaced on A15 and newer SoCs. The page table portion was turned into the Secure Page Table Monitor (SPTM), which runs at the highest privilege level (IORVBAR now points into SPTM). The code-signing portion was put into the Trusted Execution Monitor (TXM) which runs under SPTM at a lower privilege level.</p>
+
+<h1 id="evaluation-of-the-existing-exploit">Evaluation of the existing exploit</h1>
+<h2 id="finding-the-mapping-base">Finding the mapping base</h2>
+<p>The method we used to find the base address of our mapping hinged on the fact that the iboot-handoff region was situated after VRAM, which meant we could just map each page ahead of our mapping base until we found it. iboot-handoff would contain its own physical address, which meant we could calculate the physical address of our mapping by subtracting the relative offset of iboot-handoff.</p>
+
+<p>A quick look at a DeviceTree structure from any arm64e device shows that iboot-handoff is situated at the beginning of DRAM. This is a major problem, because the base of our mapping will always be after DRAM. This means that we cannot use iboot-handoff to find the base of our mapping.</p>
+
+<p>Therefore, we will need a new way of retrieving the mapping base.</p>
+
+<h2 id="finding-the-kernel-base">Finding the kernel base</h2>
+<p>On A10 &amp; A11, we read IORVBAR to retrieve a physical address inside the kernelcache in memory. We then read backwards from this address until we find the kernel physical base, then read the beginning of the MachO header to find the kernel virtual base and calculate the KASLR slide.</p>
+
+<p>Attempting to read IORVBAR with the Trigon primitive causes an Apple Memory Cache Controller (AMCC) panic - with the AMCC being the hardware memory controller. Through prior experience I was able to deduce that this was due to caching. MMIO like IORVBAR must be accessed completely uncached, but for some reason, the Trigon primitive was mapping the pages with slightly different caching attributes on arm64e than on arm64, which means we cannot access any MMIO.</p>
+
+<p>I then considered a strategy similar to A9’s, which was overwriting a coprocessor’s firmware to gain code execution. Unfortunately, this is also no longer viable for two reasons. Firstly, coprocessor firmwares are now protected under KTRR’s successor, CTRR. This means we would not be able to overwrite any code executed by them.</p>
+
+<p>Secondly, almost every coprocessor is behind a Device Address Resolution Table (DART). This is a component that sits in front of a coprocessor and acts like an MMU. It contains its own DART tables that are similar to page tables and control the physical addresses accessible by a coprocessor, regardless of the actual page tables used by the coprocessor. This means that even if we had code execution and page table control, we still couldn’t access DRAM and map in arbitrary memory.</p>
+
+<p>If the kernel wants to share some memory with a coprocessor, it can ask the PPL or SPTM to map a page into the coprocessor’s DART. The physical address must be added to the DART’s page tables for it to be made accessible to the coprocessor. However, any physical pages related to DART configuration (e.g. MMIO, DART page tables) are protected by the PPL, thus we cannot map them via the Trigon primitive.</p>
+
+<p>This means that we will either need to fix the caching issues with reading IORVBAR or find a new way of retrieving the kernel base.</p>
+
+<h2 id="achieving-arbitrary-kernel-readwrite">Achieving arbitrary kernel read/write</h2>
+<p>On all previous versions of Trigon, we would first read the <code class="language-plaintext highlighter-rouge">pv_head_table</code> to map all safe physical pages in DRAM, then would use this to search for an IOSurface owned by our process. Once we found one, we could map it and modify kernel pointers in the structure to achieve controlled reads and writes from and to these addresses.</p>
+
+<p>The first issue on arm64e stems from the introduction of a new table called the <code class="language-plaintext highlighter-rouge">pp_attr_table</code> (physical page attribute table). The <code class="language-plaintext highlighter-rouge">pp_attr_table</code> stores attributes about each page, similarly to the <code class="language-plaintext highlighter-rouge">pv_head_table</code>. One of the attributes that can be declared for a page is the PPL page attribute. This is the attribute that is checked by <code class="language-plaintext highlighter-rouge">pmap_enter_options()</code>, which will panic if the bit is set. In addition to this, iOS 14 added a new PV head flag called <code class="language-plaintext highlighter-rouge">PVH_FLAG_LOCKDOWN</code>. This signifies to the kernel that the page should <strong>never</strong> be mapped or unmapped - once it is locked down, all necessary mappings that will ever be needed are already setup. The reason these two issues cause problems for Trigon is that <strong>every page inside the CTRR region is locked down and under PPL memory</strong>. This means we cannot read any of the in-memory kernel for address translation or locating and reading structures.</p>
+
+<p>The second issue on arm64e is that the <code class="language-plaintext highlighter-rouge">pv_head_table</code> and <code class="language-plaintext highlighter-rouge">pp_attr_table</code> are stored inside PPL memory. Therefore, we cannot map them with the Trigon primitive, meaning our method of determining whether or not a page is a page table is out of reach too.</p>
+
+<p>The third issue is that my arm64e test device for this exploit was running iOS 16.0. It turned out the IOSurface technique was fixed in iOS 16, meaning we could no longer control pointers in the object for controlled reads and writes.</p>
+
+<p>Apple don’t add PAC protection to <em>every</em> kernel pointer, simply because the overhead from signing and authenticating every single pointer would cause huge performance issues. Therefore, they only add the protection to important pointers that could be beneficial to an attacker if controlled. In iOS 16, they added PAC protection specifically to the pointers we used in the IOSurface object, which means they cannot be overwritten for arbitrary kernel read/write.</p>
+
+<p>This means that to exploit Trigon on arm64e, we will also need an entirely new read/write primitive. On top of that, we will have to pull off an entire exploit without reading the kernelcache, knowing the kernel slide or knowing the address of any important structures. I also didn’t want to burn any unpatched techniques, so it will require finding a technique that is already patched.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+<p>So, let’s look back at the three stages of the exploit and recap what’s working on arm64e.</p>
+<ul>
+  <li>Finding the mapping base - <strong>not working</strong></li>
+  <li>Finding the kernel base - <strong>not working</strong></li>
+  <li>Achieving arbitrary kernel read/write - <strong>not working</strong></li>
+</ul>
+
+<p>Great, we have <strong>zero</strong> of the three stages required for the exploit. I guess we should just give up and end the blog post here, right?</p>
+
+<p>Of course not - we just need to get creative!</p>
+
+<h1 id="finding-the-mapping-base-1">Finding the mapping base</h1>
+<p>Okay, so we can’t use iboot-handoff to find the mapping base. I checked, and found no more recognisable structures after our mapping. There was no way to accurately guess the mapping base either - a wrong guess would lead to a kernel panic, but I wanted 100% reliability.</p>
+
+<p>I then remembered something that I had discovered during the development of the first edition of Trigon - the mapping’s base address is <strong>static across different boots</strong>! This means that if you find the base address of the mapping once, you can continue to use this base address and it will be the same after a reboot or re-run of the exploit.</p>
+
+<p>I decided to use this to my advantage, and as such the arm64e version of Trigon will require this address to be hardcoded for your device (this won’t be the only one!). There are a couple of ways to find this address: through kernel read/write <strong>or</strong> by guessing the base address, reading a static address assuming this guessed base address and using the panic log to calculate the correct base address (based on the physical address that was actually read).</p>
+
+<p>Thankfully, I created an easy to use command line tool for any device running the Dopamine jailbreak that will find all the necessary hardcoded values for your device/version. Since Dopamine’s device support covers all Trigon-supported versions above iOS 15, this should be enough for most people. You can find a link to it in Trigon’s README.</p>
+
+<h1 id="finding-the-kernel-base-1">Finding the kernel base</h1>
+<h2 id="attempting-to-read-mmio">Attempting to read MMIO</h2>
+<p>Okay, we now have a full physical mapping primitive. We can also read iboot-handoff, because its address is also static on arm64e - it’s at the DRAM base, which is 0x800000000 for most devices. This gives us information about the memory layout of the device, which may come in handy later (in particular, DRAM bounds).</p>
+
+<p>We cannot read the kernelcache, because the pages are locked down. However, we’ll never get anywhere unless we know <em>something</em> about the location of the kernel in memory. To find out some information about this, I wanted to read the MMIO holding IORVBAR and the CTRR region bounds. I mapped them with the Trigon primitive and got a… kernel panic.</p>
+
+<p><img src="/docs/assets/images/Trigon/arm64eMMIOPanic.jpeg" alt="Kernel panic after trying to read MMIO improperly" /></p>
+
+<p>While this panic may not tell you much, as a testament to my (painful) past experiences with similar things AMCC-related, I knew this was a caching issue. MMIO has to be mapped and accessed completely uncached, but clearly this was not the case. This confused me, because it worked just fine on arm64 devices - it mapped the MMIO uncached as required.</p>
+
+<p>After speaking to <a href="https://github.com/TheRealClarity">@TheRealClarity</a> about this issue, he told me that you can actually control the caching via the IOSurface properties. The solution is simple - when constructing the properties dictionary for the PurpleGfxMem IOSurface, I just add this line:</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">CFDictionarySetValue</span><span class="p">(</span><span class="n">dict</span><span class="p">,</span> <span class="n">CFSTR</span><span class="p">(</span><span class="s">"IOSurfaceCacheMode"</span><span class="p">),</span> <span class="n">CFNUM</span><span class="p">(</span><span class="mh">0x100</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p>This is also done in Clarity’s <a href="https://github.com/TheRealClarity/Trigon-Legacy">Trigon-Legacy</a> - check it out!</p>
+
+<p>With this, we are able to map and read IORVBAR and the CTRR region bounds. Does this help us find the kernel base? We still can’t read any page inside the CTRR region. However, what we do know is that all executable code is physically contiguous because of CTRR, which means that if we knew the offset of IORVBAR from the kernel base, we could calculate the kernel physical base. Luckily, we can do exactly this! All kernels for different devices/versions are actually available to download from Apple’s servers - jailbreaks like Dopamine use this to patchfind the kernel before starting the jailbreak. So, all this requires is simply some static patchfinding and then, again, hardcoding a value (the IORVBAR offset).</p>
+
+<p>With this done, we now know the physical address of the kernel base. Unfortunately, this doesn’t give us the kernel slide, since the maximum physical slide of the kernel is different to the maximum KASLR (virtual) slide. We don’t have any other physical addresses of important structures and objects, so we can’t actually use this to our advantage without any more information.</p>
+
+<h1 id="achieving-arbitrary-kernel-readwrite-1">Achieving arbitrary kernel read/write</h1>
+<p>So, we’re in a really tricky position. We have the kernel’s physical base address, but not really anything more. We still cannot map anything within the CTRR region, so having the base address may as well be useless.</p>
+
+<p>After a while, I had an idea. We can now map MMIO, as shown above. But what are MMIO used for, again? Communication between the AP and coprocessors &amp; peripherals. Now, this isn’t exactly a breakthrough on its own - of course we can in theory talk to other peripherals on the device, but that doesn’t really help us here.</p>
+
+<p>But I thought about Operation Triangulation, the original in-the-wild chain that exploited the Trigon vulnerability. That also had a PPL bypass through the AGX (GPU coprocessor). This bypass was done <strong>entirely through MMIO</strong>!</p>
+
+<h2 id="agx-cache-poisoning">AGX cache poisoning</h2>
+<p>I wanted to understand how this bypass worked. After some investigation, I believe I can explain it well enough. However, the truth is, it’s impossible to truly know without information that is likely restricted only to Apple.</p>
+
+<p>Essentially, certain coprocessors in the iPhone seem to have a debug feature that allows you to overwrite an L2 cacheline for some backing physical memory. Then, when the cacheline is evicted, the overwritten data will be written back to the physical memory it corresponded to. Normally, this wouldn’t be a security issue, because the coprocessor’s DART would prevent any protected memory from being written to. However, a unique feature of the AGX is that, for performance reasons, <strong>it has no DART</strong>. This meant that if you poisoned a cacheline for a PPL address, it would be written back with no problem.</p>
+
+<p>A cacheline is 64 bytes on modern SoCs. What this means is that the primitive essentially gives us a 64-<strong>byte</strong> arbitrary write. This can be to kernel or PPL memory, but CTRR still applies, because that is enforced by the AMCC, which sits in front of the DRAM controller itself and intercepts every write from every processor. In iOS 16.6, Apple added the physical address ranges that cover these MMIO to <code class="language-plaintext highlighter-rouge">pmap-io-ranges</code>, which are address ranges that the PPL should prevent any mappings being made for. This creates a chicken-and-egg problem, because you’d need a PPL bypass in the first place to map the registers on newer versions of iOS.</p>
+
+<h2 id="using-the-arbitrary-write">Using the arbitrary write</h2>
+<p>Having the arbitrary PPL write primitive was a big step in the right direction, but we still have a slight problem: we don’t know where to write! Additionally, because we don’t have a read primitive, we must perform the entire absolute write either without knowing the data at the source address or by predicting it (if the source data contains kernel pointers, for example, we are most likely unable to overwrite it safely).</p>
+
+<p>I wanted to investigate whether it was possible to predict the physical addresses of certain data structures based on knowing the kernel’s physical base address. Specifically, I looked at whether the <code class="language-plaintext highlighter-rouge">pv_head_table</code> and the <code class="language-plaintext highlighter-rouge">pp_attr_table</code> were at predictable locations in memory. Looking at the XNU source, you will find that they are allocated differently to most other data structures. Because they are allocated so early on in boot, the infrastructure for making proper heap allocations is not yet initialised. Therefore, they take the first available physical page of writable memory from iBoot’s boot arguments (<code class="language-plaintext highlighter-rouge">BootArgs-&gt;topOfKernelData</code>) and make subsequent early allocations from that. <code class="language-plaintext highlighter-rouge">avail_start</code> is the <em>current</em> next writable physical address, and they simply increment it by the size of every new early allocation each time.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">pp_attr_table</span> <span class="o">=</span> <span class="p">(</span><span class="n">pp_attr_t</span> <span class="o">*</span><span class="p">)</span><span class="n">phystokv</span><span class="p">(</span><span class="n">avail_start</span><span class="p">);</span>
+<span class="n">avail_start</span> <span class="o">=</span> <span class="n">PMAP_ALIGN</span><span class="p">(</span><span class="n">avail_start</span> <span class="o">+</span> <span class="n">pp_attr_table_size</span><span class="p">,</span> <span class="n">__alignof</span><span class="p">(</span><span class="n">pmap_io_range_t</span><span class="p">));</span>
+<span class="p">...</span>
+<span class="n">pv_head_table</span> <span class="o">=</span> <span class="p">(</span><span class="n">pv_entry_t</span> <span class="o">**</span><span class="p">)</span><span class="n">phystokv</span><span class="p">(</span><span class="n">avail_start</span><span class="p">);</span>
+<span class="n">avail_start</span> <span class="o">=</span> <span class="n">round_page</span><span class="p">(</span><span class="n">avail_start</span> <span class="o">+</span> <span class="n">pv_head_size</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>In theory, this means they should be allocated at the same physical offset initially on every boot. However, I was concerned they could get remapped at some point and this wouldn’t be the case on a booted system. Therefore, I checked on a booted system and sure enough, the offset of both tables from the kernel’s physical base was always the same! This meant that we could locate them once (with an existing kernel exploit, for example) and then on subsequent runs can determine the physical addresses of both the <code class="language-plaintext highlighter-rouge">pv_head_table</code> and the <code class="language-plaintext highlighter-rouge">pp_attr_table</code>. If you think back to these tables, they control whether pages are marked as CTRR pages, PPL pages, page tables, and so on. Being able to overwrite these with our PPL write primitive essentially lets us map any physical page we want to.</p>
+
+<p>At least, this is what I presumed. But after looking further into how the <code class="language-plaintext highlighter-rouge">pv_head_table</code> worked, I noticed that the table entries seemed to be kernel pointers with some of the top bits replaced with flags. This would point to some second-level structure depending on the type of page (page table, single mapping, multiple mappings, etc.). However, for pages with the <code class="language-plaintext highlighter-rouge">PVH_FLAG_LOCKDOWN</code> bit set, it’s even better for us. The lockdown bit essentially means that the page will never be mapped again, its current mappings will stay the same and it will never be unmapped either. What this <em>also</em> means is that the second-level structure will never be accessed by the kernel again, in theory.</p>
+
+<p>The reason this is beneficial to us is that we can then replace this kernel pointer with a null pointer and still avoid any kernel data aborts. This means we can overwrite <code class="language-plaintext highlighter-rouge">pv_head_table</code> entries for locked down pages with just the flags we want and don’t want, we don’t have to worry about the encoded pointer. Thus, by using our PPL write primitive, we can “unlock” any locked down page and map it into our process by modifying the <code class="language-plaintext highlighter-rouge">pv_head_table</code> and <code class="language-plaintext highlighter-rouge">pp_attr_table</code>.</p>
+
+<h2 id="building-full-kernel-readwrite">Building full kernel read/write</h2>
+<p>Once we have control of the <code class="language-plaintext highlighter-rouge">pv_head_table</code> and <code class="language-plaintext highlighter-rouge">pp_attr_table</code>, it’s as good as game over. First of all, I calculate the offset of the entries for both structures in each one and use the AGX arbitrary write primitive to make both tables mappable. Then, I map them into my process using the standard Trigon primitive and I can read/write to them as I please. That’s the last time I need to use the AGX arbitrary write.</p>
+
+<p>Then, I can unlock the CTRR region by removing the lockdown bit and the PPL bit for each page. After that, I can read the in-memory kernelcache to find the kernel base, slide and its root level page table. Once <em>that</em> has been located, I can make it mappable and then read it in order to let me translate <strong>any kernel address</strong> to its respective physical address. At this point, we have achieved the ability to read from and write to any virtual kernel address, which is the point of a kernel exploit. Finally, it is complete! Or… is it?</p>
+
+<h1 id="building-better-kernel-readwrite-primitives">Building better kernel read/write primitives</h1>
+<h2 id="observed-issues">Observed issues</h2>
+<p>Soon after I began trying to implement my exploit into Dopamine, I ran into an issue - it couldn’t build stable PPL read/write primitives without panicking (<code class="language-plaintext highlighter-rouge">invalid PV head</code> panic message).</p>
+
+<p>The way Dopamine builds stable primitives is by using the PPL bypass to write arbitrary page table entries to its own page tables, which gives it access to whatever physical addresses it likes. To try and track down the issue, I began to implement this standalone inside the Trigon exploit. I found that when I tried to map and access my own page table several times, it would panic with the <code class="language-plaintext highlighter-rouge">invalid PV head</code> message. Soon after, I realised that pages that are accessed by userspace more than once cannot be mapped without triggering this panic.</p>
+
+<p>While I never <em>solved</em> the issue, the root cause seemed to be that when I modified the PV head table before mapping a protected page, I would somehow corrupt some other data structure. This is likely due to the fact that I set the <code class="language-plaintext highlighter-rouge">pv_head_table</code> entry to <code class="language-plaintext highlighter-rouge">NULL</code> before mapping the page, which causes the kernel to create a <em>new</em> entry for it when I map and access the page. Even though I restore the original entry after accessing the page, it seems that on subsequent accesses, some structures are out of sync in kernel memory and it panics as a result. Nevertheless, if you can’t solve an issue, you can always work around it.</p>
+
+<h2 id="plan">Plan</h2>
+<p>What we do know is that the pages we need to map for translation (AKA the kernel’s page tables) will <em>never</em> be mapped by userspace (as the PPL would normally forbid it, because they are PPL/CTRR protected). Kernel heap pages, or anything in the kernelcache, for example, are also safe to map. I initially thought kernel heap pages might be risky, as they could get unmapped and re-mapped to userspace later on, but I realised the <code class="language-plaintext highlighter-rouge">pv_head_table</code> entry would be regenerated in this event anyway. However, shared memory, userspace page tables, or anything similar to this is <em>off limits</em> and unsafe to map.</p>
+
+<p>Knowing this, I came up with a plan. We just need to build a new kernel read primitive - we can still use the AGX cache injection bug as a write primitive. Then, the kernel read primitive can be used to <em>safely</em> read PPL- and CTRR-protected pages without having to mess with the <code class="language-plaintext highlighter-rouge">pv_head_table</code> or <code class="language-plaintext highlighter-rouge">pp_attr_table</code> (since this memory is all mapped read-only to XNU).</p>
+
+<h2 id="socket-based-read-primitive">Socket-based read primitive</h2>
+<p>With the release of <a href="https://cloud.google.com/blog/topics/threat-intelligence/darksword-ios-exploit-chain">DarkSword</a>, we were given a very simple kernel read/write primitive via sockets.</p>
+
+<p>The primitive works by overwriting a pointer in the <code class="language-plaintext highlighter-rouge">inpcb</code> structure, held at <code class="language-plaintext highlighter-rouge">socket-&gt;so_pcb-&gt;inp6_icmp6filt</code>. Then, by calling <code class="language-plaintext highlighter-rouge">getsockopt()</code> with the <code class="language-plaintext highlighter-rouge">ICMP6_FILTER</code> option, it will perform a <code class="language-plaintext highlighter-rouge">copyout()</code> to userspace using this pointer, which will behave like a <code class="language-plaintext highlighter-rouge">memcpy()</code> from kernel memory to userspace memory.</p>
+
+<p>To set this up in Trigon, we have to create a new socket by calling <code class="language-plaintext highlighter-rouge">socket()</code>, then find its kernel address using our initial kernel read/write primitives. From there, we can find the kernel address of its <code class="language-plaintext highlighter-rouge">inpcb</code> structure and thus the <code class="language-plaintext highlighter-rouge">inp6_icmp6filt</code> pointer.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">driver</span> <span class="o">=</span> <span class="n">socket</span><span class="p">(</span><span class="n">AF_INET6</span><span class="p">,</span> <span class="n">SOCK_DGRAM</span><span class="p">,</span> <span class="n">IPPROTO_ICMPV6</span><span class="p">);</span>
+
+<span class="c1">// Find the address of our new socket</span>
+<span class="kt">uint64_t</span> <span class="n">ofiles</span> <span class="o">=</span> <span class="n">kread_ptr</span><span class="p">(</span><span class="n">proc</span> <span class="o">+</span> <span class="n">koffsetof</span><span class="p">(</span><span class="n">proc</span><span class="p">,</span> <span class="n">ofiles</span><span class="p">));</span>
+<span class="kt">uint64_t</span> <span class="n">fileproc</span> <span class="o">=</span> <span class="n">kread_ptr</span><span class="p">(</span><span class="n">ofiles</span> <span class="o">+</span> <span class="p">(</span><span class="n">driver</span> <span class="o">*</span> <span class="nf">sizeof</span><span class="p">(</span><span class="kt">uint64_t</span><span class="p">)));</span>
+<span class="kt">uint64_t</span> <span class="n">fileglob</span> <span class="o">=</span> <span class="n">kread_ptr</span><span class="p">(</span><span class="n">fileproc</span> <span class="o">+</span> <span class="n">koffsetof</span><span class="p">(</span><span class="n">fileproc</span><span class="p">,</span> <span class="n">fileglob</span><span class="p">));</span>
+<span class="kt">uint64_t</span> <span class="n">socketKaddr</span> <span class="o">=</span> <span class="n">kread_ptr</span><span class="p">(</span><span class="n">fileglob</span> <span class="o">+</span> <span class="n">koffsetof</span><span class="p">(</span><span class="n">fileglob</span><span class="p">,</span> <span class="n">data</span><span class="p">));</span>
+<span class="kt">uint64_t</span> <span class="n">inpcb</span> <span class="o">=</span> <span class="n">kread_ptr</span><span class="p">(</span><span class="n">socketKaddr</span> <span class="o">+</span> <span class="n">koffsetof</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="n">pcb</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p>Once we have that, we use the early read/write primitives once again to translate this kernel address to a physical address, before mapping it with our mapping primitive. Once that’s done, we can perform an arbitrary kernel read like so.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">socklen_t</span> <span class="n">len</span> <span class="o">=</span> <span class="n">SOCKET_ICMP6_FILTER_SIZE</span><span class="p">;</span>
+<span class="o">*</span><span class="n">icmp6filter_mapped</span> <span class="o">=</span> <span class="n">va</span><span class="p">;</span>
+<span class="n">getsockopt</span><span class="p">(</span><span class="n">gSocket</span><span class="p">,</span> <span class="n">IPPROTO_ICMPV6</span><span class="p">,</span> <span class="n">ICMP6_FILTER</span><span class="p">,</span> <span class="n">outBuffer</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">len</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now that we have a new read primitive setup, we are finally done (for real this time!). We can safely read any PPL- or CTRR-protected page without modifying the <code class="language-plaintext highlighter-rouge">pv_head_table</code> or <code class="language-plaintext highlighter-rouge">pp_attr_table</code>, and we can write to any PPL-protected page using the AGX cache injection primitive. This gives us a full, stable, deterministic kernel exploit and PPL bypass!</p>
+
+<p>This read/write primitive was finally patched in iOS 27.2 beta 3 by adding data PAC to the <code class="language-plaintext highlighter-rouge">icmp6filter</code> pointer, which means that Trigon64e is officially <strong>completely patched</strong>.</p>
+
+<h1 id="conclusion-1">Conclusion</h1>
+<p>I was always annoyed that I couldn’t figure out how to pop arm64e with this bug, back when I originally released my A10 exploit. With this being such a powerful bug, there was bound to be a nice way to exploit it, and I think this implementation is pretty cool. Now, from iOS 13 to iOS 16.5, on A9 - A16 devices, that now gives us a <em>very</em> wide (and, if I may say so myself, pretty impressive) range of device and version combinations supported by Trigon! Two coprocessors, three different strategies and five read/write primitives have all gone into this exploit across all of these combinations.</p>
+
+<p>Looking at Trigon’s in-the-wild implementation would be an interesting bit of research, now that we finally have the samples of the exploit from <a href="https://cloud.google.com/blog/topics/threat-intelligence/coruna-powerful-ios-exploit-kit">Coruna</a> (which was an updated version of Operation Triangulation). It’s on my ever-growing list of rainy day projects.</p>
+
+<p>As with every iteration of Trigon, I could never have done this alone. A few people I would like to thank:</p>
+<ul>
+  <li><a href="https://github.com/staturnzz">staturnz</a>, <a href="https://github.com/therealclarity">TheRealClarity</a> - continued collaboration and work on Trigon throughout its development and discussing ideas/strategies with me</li>
+  <li>Google’s Threat Intelligence Group - discovery and disclosure of DarkSword</li>
+  <li>DarkSword’s developers - socket read primitive</li>
+</ul>
+
+<p>If you have any questions, or notice any mistakes, please email me at <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c5a4a9a3aca085a4a9a3aca0a6a2ebb0ae">[email&#160;protected]</a> and I will try and get back to you ASAP. I’m always happy to discuss ideas and answer any questions, no matter how simple or complex they may be!</p>
+
+  </div><a class="u-url" href="/2026/10/17/Trigon.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Alfie CG</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Alfie</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/alfiecg24"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">alfiecg24</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Developer</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4e2461998f5f944',t:'MTc5MjYwNjgwMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+</html>
