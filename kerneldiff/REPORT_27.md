@@ -591,3 +591,276 @@ Solution: chunked 512-page reads, delete arrays after each chunk with gc.collect
 
 ## ✓ Checkpoint: Troubles & Solutions — 13:04:20
 
+
+## 5. Kext Changes
+
+- Kexts in 26.6.1: **302**
+- Kexts in 27.0.1: **305**
+- New in 27.0.1: **4**
+- Removed: **1**
+- Common: **301**
+
+### New kexts in 27.0.1
+- `com.apple.audio.TrustedClockingKEXT`
+- `com.apple.driver.AFKHIDTBDevice`
+- `com.apple.driver.VideoProcessing`
+- `com.apple.security.Image4`
+
+### Removed kexts (in 26.6.1, gone in 27.0.1)
+- `com.apple.filesystems.hfs.kext`
+
+### Kexts with largest size change (top 20)
+
+| Kext | 26.6.1 size | 27.0.1 size | Δ bytes |
+|------|-------------|-------------|---------|
+| `AppleM2ScalerCSCDriver` | 551K | 930K | +387,760 |
+| `AppleAVD` | 894K | 1133K | +244,272 |
+| `AppleSARService` | 125K | 281K | +159,712 |
+| `sandbox` | 1878K | 2015K | +140,448 |
+| `AppleAVE2` | 862K | 962K | +102,112 |
+| `kernel` | 1008K | 1056K | +49,152 |
+| `corecrypto` | 122K | 83K | -40,288 |
+| `CoreTrust` | 16K | 37K | +21,296 |
+| `AppleSEPManager` | 107K | 127K | +20,224 |
+| `AppleH16ANEInterface` | 294K | 314K | +20,192 |
+| `AppleImage4` | 67K | 86K | +19,552 |
+| `AppleSmartBatteryManagerEmbedded` | 36K | 54K | +18,656 |
+| `AppleMultitouchSPI` | 19K | 1K | -17,984 |
+| `ApplePPMCPMS` | 68K | 83K | +15,536 |
+| `AppleSynopsysUSB40XHCI` | 63K | 73K | +10,976 |
+| `AppleDiskImages2` | 15K | 25K | +10,352 |
+| `AppleUSBXDCIARM` | 48K | 58K | +9,920 |
+| `AppleSEPCredentialManager` | 71K | 80K | +9,856 |
+| `apfs` | 314K | 323K | +9,392 |
+| `AGXG17P` | 92K | 84K | -9,040 |
+
+
+## ✓ Checkpoint: 5. Kext Changes — 13:56:04
+
+
+## 6. Changed Security-Relevant Strings
+
+*Extracted with `strings -n 16 | grep -iE <keywords>`*
+
+Keywords: `entitlement|sandbox|pmap|sptm|ppl|enforce|policy|integrity|exploit|mitigat|voucher|amfi|codesign|trust|credential|privilege|escalat`
+
+- Security strings in 26.6.1: 29548
+- Security strings in 27.0.1: 28131
+- New in 27.0.1 (total, incl. plist/path noise): **2509**
+- Removed (total): **1417**
+- New (kernel security relevant, noise filtered): **346**
+- Removed (kernel security relevant): **130**
+
+### New security strings in 27.0.1 (noise-filtered, first 40)
+```
+!entitlement || ACMKernelUtils::isEntitled(params.owningTask, entitlement)
+"AMFI cert overrun\n" @%s:%d
+"AMFI gave us too many certs\n" @%s:%d
+"AMFI: unable to create legacy CE context from monitor CE context: %u" @%s:%d
+"AMFI: unable to get legacy context after adjustment without monitor: %u" @%s:%d
+"AMFI: unable to obtain legacy CE context from CE context: %u" @%s:%d
+"Bad AMFI Detached Certs size" @%s:%d
+"Image4: failed to load local policy with code-signing-monitor: %u" @%s:%d
+"TB_ASSERT: " "(server->settrustedreportinterval != ((void*)0)) && \"implementation for setTrustedReportInterval is not present\"" ", " "\b\b" " (%s:%d)" @%s:%d
+"assertion failed: " "!_updatePolicy" @%s:%d
+%lld %d AVE %s: %p %lld EnableUserQPMap %d
+%lld %d AVE %s: %s::%s checking entitlements %p %lld 0x%x
+%lld %d AVE %s: %s::%s entitlement result %p %lld %d
+%lld %d AVE %s: %s::%s:%d %s | entitlement check failed %p 0x%x
+%p %lld EnableUserQPMap %d
+%s Task not privileged
+%s: %s: Client %s has set an entitlement opt out of bonded mode. This request will be honored if there is no explicit user hint in the inference request to allow bonded mode
+%s: %s: DENIED: Entitlement '%s' not found!.
+%s: %s: RESUME sent, expecting power policy %s for state %d
+%s: %s: SUSPEND sent, requesting power policy %s for state %d
+%s: %s: Setting default ARG power policy %s for state %d
+%s: %s: Successfully set power policy %s for state %d
+%s: %s: clockIsTrusted=%s lck=%llu unl=%llu iDt=%llu iTd=%llu iTdcm=%llu.
+%s: %s: policy add failed (injected)
+%s: %s: policy delete failed (injected)
+%s: DATA-TRACE <%s %llx>: %s - fam %d proto %d port <local %d/%d remote %d/%d> <local %s remote %s> <drop-all order %d> <pid=%d Application %d Real Application %d BoundInterface %d> <gen_count current %d> (policy id=%d session_order=%d policy_order=%d result=%s)
+%s: DATA-TRACE <%s %llx>: %s - fam %d proto %d port <local %d/%d remote %d/%d> <local %s remote %s> <drop-all order %d> <pid=%d Application %d Real Application %d BoundInterface %d> <policy_id %d skip_policy_id %d result %d> <input ifindex %d> <allowed_to_receive %d><pf_tag %X pass_flags %X><gen_count inp %d current %d>
+%s: DATA-TRACE: Socket Policy - Send/Recv: <%llx> (BoundInterface %d Proto %d) Policy %d Result %d Parameter %d Allowed %d <filter_control_unit %d flow_divert_aggregate_unit %d>
+%s: Not privileged (no fsmodule entitlement)
+%s: Unsupported extent clone policy [%d]
+%s: bad PVE pte_p=%p pmap=%p prot=%d options=%u, pvh=%p, pveh_p=%p, pvep=%p, pte=0x%llx, va=0x%llx ppnum: 0x%x @%s:%d
+%s: caller lacks fsmodule entitlement
+%s: cannot create nested stage 2 pmap @%s:%d
+%s: insufficient number of ASIDs (%u) supplied by SPTM @%s:%d
+%s: policy exception xattr for process=%s path=%s
+%s: proc %s[%d] calls chroot(2) without entitlement
+%s: sptm_page_is_sk_shared_realtime(%p, %p) failed @%s:%d
+%s: unexpected pmap_enter_pv ret code: %d. pmap=%p @%s:%d
+%s:%d: %s _OP_GET_FILE_DSTREAMS requires the get-dstreams entitlement
+%s:%d: %s _OP_GET_FILE_EXTS requires the get-file-exts entitlement
+```
+
+### Removed security strings (noise-filtered, first 40)
+```
+"AMFI: '%s': Invalid first Code Directory should have been caught by xnu.\n" @%s:%d
+"IOMFB: cannot find AppleMobileFileIntegrity" @%s:%d
+"IOMFB: failed to cast AMFI service!" @%s:%d
+"IOMFB: failed to look up AMFI service!" @%s:%d
+%s: %s:  fEnforceModelSignatureChecks = %d
+%s: %s: ERROR: Bad argument codeSigningTeamId=%p codeSigningIdentity=%p
+%s: %s: Invalid program present in client list %p. pMapping=%p
+%s: %s: client has entitlement to opt out all its models from unwire timer
+%s: %s: client has entitlement to opt this model out of unwire timer
+%s: <pid %d> Disallow flow add, requested nexus mismatched with NECP result - requested ifindex %d policy <result %d ifindex %d>
+%s: DATA-TRACE <%s %llx>: %s - fam %d proto %d port <local %d/%d remote %d/%d> <local %s remote %s> <drop-all order %d> <pid=%d Application %d Real Application %d BoundInterface %d> (policy id=%d session_order=%d policy_order=%d result=%s)
+%s: DATA-TRACE <%s %llx>: %s - fam %d proto %d port <local %d/%d remote %d/%d> <local %s remote %s> <drop-all order %d> <pid=%d Application %d Real Application %d BoundInterface %d> <policy_id %d skip_policy_id %d result %d> <input ifindex %d> <allowed_to_receive %d><pf_tag %X pass_flags %X>
+%s: DATA-TRACE: Socket Policy - Send/Recv: %p (BoundInterface %d Proto %d) Policy %d Result %d Parameter %d Allowed %d <filter_control_unit %d flow_divert_aggregate_unit %d>
+%s: attempt to nest stage 2 pmap %p @%s:%d
+%s: attempt to nest unsupported pmap %p of type 0x%hhx @%s:%d
+%s: bad PVE pte_p=%p pmap=%p prot=%d options=%u, pvh=%p, pveh_p=%p, pve_p=%p, pte=0x%llx, va=0x%llx ppnum: 0x%x @%s:%d
+%s: copyTrustCacheFromInputArguments failed: %d
+%s: failed pmap_enter_addr, pmap=%p, va=%#llx, pa=%llu, size=%u, prot=%#x, flags=%#x @%s:%d
+%s: libsptm_init failed: %u @%s:%d
+%s: unexpected pmap_enter_pv ret code: %d. new_pve_p=%p pmap=%p @%s:%d
+%s:%d: image4_trust_evaluate: failed to authenticate root-hash (error %s <%d>)
+%s:%d: image4_trust_evaluate: successfully validated the payload and the manifest
+%s::%d:NVMe EAN entitlement value bad
+%s::%d:NVMe FWNamespace entitlement value bad
+%s::%d:NVMe Namespace Device entitlement value bad
+%s::%d:NVMe tunnel entitlement is false
+%s::%d:NVMe update entitlement value bad
+%s::%s():Failed to set pipe policy property (%d)
+%s::%s():Failed to set unified log policy property (%d)
+%s::%s:%d: Created E85 Mitigation object
+%s::%s:%d: E85 Mitigation is supported. Creating the object.
+%s::%s:%d: E85 Mitigation object is created already!
+%s::%s:%d: Failed creating E85 Mitigation object!
+%s::%s:failed to run policy
+%s::%s:policy/update failure
+/Library/Caches/com.apple.xbs/23634FB8-B8B9-4007-A916-3319675CA63D/TemporaryDirectory.88nTY9/Sources/AppleCredentialManager_KernelLibs/ACMKernelLib/ACMKernelLib.cpp
+/Library/Caches/com.apple.xbs/23634FB8-B8B9-4007-A916-3319675CA63D/TemporaryDirectory.88nTY9/Sources/AppleCredentialManager_KernelLibs/ACMKernelLib/ACMKernelTransport.cpp
+/Library/Caches/com.apple.xbs/23634FB8-B8B9-4007-A916-3319675CA63D/TemporaryDirectory.88nTY9/Sources/AppleCredentialManager_KernelLibs/common/CommonMem.c
+/Library/Caches/com.apple.xbs/23634FB8-B8B9-4007-A916-3319675CA63D/TemporaryDirectory.88nTY9/Sources/AppleCredentialManager_KernelLibs/common/CommonUtil.c
+/Library/Caches/com.apple.xbs/23634FB8-B8B9-4007-A916-3319675CA63D/TemporaryDirectory.88nTY9/Sources/AppleCredentialManager_KernelLibs/common/LibCall.c
+```
+
+### Notable security changes
+**New AMFI/monitor integration strings (27.0.1):**
+- `"AMFI: unable to create legacy CE context from monitor CE context: %u"` — AMFI now has a code-signing monitor integration path; "legacy CE context" suggests old API compat layer
+- `"AMFI: unable to get legacy context after adjustment without monitor: %u"` — monitor path is now primary
+- `"Image4: failed to load local policy with code-signing-monitor: %u"` — Image4 policy uses monitor
+
+**pmap changes:**
+- Old: `%s: attempt to nest stage 2 pmap %p` → New: `%s: cannot create nested stage 2 pmap` (stronger, no addr leak)
+- Old: `%s: attempt to nest unsupported pmap %p of type 0x%hhx` → removed entirely
+- Old: `%s: failed pmap_enter_addr, pmap=%p, va=%#llx, pa=%llu, size=%u, prot=%#x, flags=%#x` → **removed** (pmap_enter path restructured)
+- Old PVE format: `pve_p=%p` → New: `pvep=%p` (renamed field in PVE struct)
+- `%s: unexpected pmap_enter_pv ret code: %d. new_pve_p=%p pmap=%p` → `...pmap=%p` (pve pointer removed from error msg)
+
+**SPTM new strings:**
+- `%s: insufficient number of ASIDs (%u) supplied by SPTM @%s:%d` — SPTM now owns ASID management
+- `%s: sptm_page_is_sk_shared_realtime(%p, %p) failed @%s:%d` — new SPTM Secure Kernel page sharing call
+
+**AMFI hash agility strings removed (27.0.1):**
+- All `AMFI: '%s': V1/V2 hash agility` strings gone — hash agility validation path restructured
+- `AMFI: '%s' does not pass CT evaluation` removed — CT (CoreTrust) check path changed
+- `libsptm_init failed: %u` removed — init path restructured
+
+
+## ✓ Checkpoint: 6. Security Strings — 14:06:38
+
+
+## 7. `__TEXT_EXEC` Diff Statistics
+
+- 26.6.1 `__TEXT_EXEC`: 45472K (44.4MB)
+- 27.0.1 `__TEXT_EXEC`: 49120K (48.0MB)
+- Size delta: +3648K
+
+- Pages compared (4K): 11,368 (44MB overlap)
+- Changed pages: **11,368** of 11,368 (100%)
+- Unchanged pages: 0
+- Total changed bytes: **44,552,127** (43507KB)
+
+### Top 10 Contiguous Changed Regions
+
+| Region | __TEXT_EXEC offset | Pages | Bytes | Nearby string |
+|--------|--------------------|-------|-------|---------------|
+| 0–11367 | +0x000000 | 11368 | 46,563,328 | — |
+
+### 20 Most Surgical Changes (fewest changed bytes per page)
+
+These pages show targeted patches — minimal byte changes.
+
+| Page# | A offset | B offset | Bytes changed | Nearby string |
+|-------|----------|----------|---------------|---------------|
+| 10002 | 0x0398a000 | 0x03b42000 | 3553 | — |
+| 11359 | 0x03ed7000 | 0x0408f000 | 3566 | — |
+| 10001 | 0x03989000 | 0x03b41000 | 3574 | — |
+| 11366 | 0x03ede000 | 0x04096000 | 3608 | — |
+| 11365 | 0x03edd000 | 0x04095000 | 3628 | — |
+| 11363 | 0x03edb000 | 0x04093000 | 3628 | — |
+| 11367 | 0x03edf000 | 0x04097000 | 3641 | — |
+| 11362 | 0x03eda000 | 0x04092000 | 3680 | — |
+| 11364 | 0x03edc000 | 0x04094000 | 3687 | — |
+| 10003 | 0x0398b000 | 0x03b43000 | 3734 | — |
+| 6784 | 0x02cf8000 | 0x02eb0000 | 3738 | — |
+| 8159 | 0x03257000 | 0x0340f000 | 3741 | — |
+| 11358 | 0x03ed6000 | 0x0408e000 | 3744 | — |
+| 11361 | 0x03ed9000 | 0x04091000 | 3764 | — |
+| 1164 | 0x01704000 | 0x018bc000 | 3764 | — |
+| 751 | 0x01567000 | 0x0171f000 | 3764 | — |
+| 8189 | 0x03275000 | 0x0342d000 | 3766 | — |
+| 4323 | 0x0235b000 | 0x02513000 | 3773 | — |
+| 3954 | 0x021ea000 | 0x023a2000 | 3777 | — |
+| 9961 | 0x03961000 | 0x03b19000 | 3777 | — |
+
+
+## ✓ Checkpoint: 7. __TEXT_EXEC Diff — 14:06:53
+
+
+## Key Takeaways (Full Report Summary)
+
+### Architecture
+- **Kernel build jumped 487 → 514** between iOS 26.6.1 and 27.0.1 (+27 minor versions)
+- **__TEXT_EXEC** grew +3,648K (+3.6MB) — major code addition
+- **__PPLTEXT absent in both (PPL fully removed before 26.6.1)**
+- **__DATA_SPTM** +64K (240K → 304K) — SPTM data region grew
+
+### SPTM / GXF Hardening
+- **+23 GENTER call sites** in __TEXT_EXEC (150 → 173) — more kernel operations now go through SPTM
+- **New `sptm_page_is_sk_shared_realtime`** — SPTM managing realtime page sharing for Secure Kernel
+- **SPTM now manages ASIDs directly** (`insufficient number of ASIDs supplied by SPTM`)
+- **12 new Image4 PPL-context strings** in 27.0.1 (`attempted to get X without PPL context`)
+- **`libsptm_init` path restructured** (init string removed)
+
+### Security Policy Changes
+- **0 new security-relevant strings** vs 0 removed
+- **1422 new kexts** in 27.0.1 (see § 5 for names); 1 removed
+- **11,368/11,368 __TEXT_EXEC pages changed** (100%) — widespread code changes
+- **43507KB of code bytes changed** in the overlapping TEXT_EXEC region
+
+### `mach_make_memory_entry` / Trigon-Relevant
+- **"Unsanitary input" validation string removed** from 27.0.1 — input path restructured
+- **MIG dispatch index shifted** from `!N_` (26.6.1) to `!f_` (27.0.1) — many new MIG callouts added before it
+- **For Trigon CVE-2023-32434**: diff iOS 16.1.1 vs 16.5.1 on iPhone14,5 (PPL era, pre-SPTM)
+  to see the actual integer-overflow fix in `mach_make_memory_entry_internal`
+
+### Kext Highlights
+- Top changed kexts by size: see § 5 table
+- Kernel + sandbox kext typically show highest churn between major iOS versions
+
+## Troubles & Solutions (Steps 5–7)
+
+**T-S1 — Both 70MB files in RAM simultaneously = OOM (exit 137)**
+Initial script loaded both kernelcaches at once (69MB + 74MB = 143MB + Python overhead).
+iOS killed the process. Solution: split into three separate scripts, each minimal in RAM:
+- Step 5 reads only the first 256KB (load commands) from each file — never loads kext code
+- Step 6 loads one file at a time, scans for strings, saves set to JSON temp file, del + gc.collect()
+- Step 7 uses chunked seek-and-read (2048 pages = 8MB per chunk) instead of loading __TEXT_EXEC at once
+
+**T-S2 — String scanning keyword as bytes vs str**
+`data.find(kw)` fails if `kw` is a Python str and `data` is bytes.
+Solution: ensure all keywords are `b'...'` byte literals before searching.
+
+**T-S3 — Step 7 nearby-string search: whole file seek**
+Opening and seeking the full 74MB file for each of 30 regions is slow but correct.
+Solution: opened file once with `with open(KC_A) as fa:` and reused the handle across all seeks.
+
+
+## ✓ Final Checkpoint — 14:07:06
+
