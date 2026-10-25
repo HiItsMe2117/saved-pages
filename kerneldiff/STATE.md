@@ -5,7 +5,7 @@
 
 | Date | Path | Tool/File | Finding | Report |
 |---|---|---|---|---|
-| 2026-10-25 | nvme_instance writability | kc_27.0.1.macho + sptm_27.0.1.bin | IN PROGRESS | REPORT_NVME_INSTANCE.md |
+| 2026-10-25 | nvme_instance writability | kc_27.0.1.macho + sptm_27.0.1.bin | NOT XNU-writable; linear flag in SPTM-private memory set at boot; q_tail walk-off now top target | REPORT_NVME_INSTANCE.md |
 | 2026-10-25 | SET_SQ_ENTRY bounds | sptm_27.0.1.bin | 3 gaps: linear-mode PA bypass, q_tail walk-off, unchecked payload | REPORT_NVME_SQENTRY.md |
 | 2026-10-25 | NVMe eps 10–15 guards | sptm_27.0.1.bin | Not unguarded; VIOLATION_NVME_ILLEGAL_CALL + allowed_functions bitmask in __DATA | REPORT_NVME_UNGUARDED.md |
 | 2026-10-25 | SK binary location | IPSW 27.0.1 | SK sealed inside SPTM image; not standalone; bootstrapped by SPTM+0x9f90c GENTER | REPORT_SK_BINARY.md |
@@ -188,11 +188,15 @@ KEY UNKNOWN: is nvme_instance in XNU-writable memory during IONVMeFamily operati
 - SK→SPTM calls must be found within sptm_27.0.1.bin by reversing bootstrap sequence
 
 ## Next Steps — Priority
-1. *** nvme_instance writability *** — can IONVMeFamily (XNU kext) write nvme-linear-sq flag?
-   If yes: linear mode PA bypass = DMA primitive at GL2
-2. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) to find SK entry in SPTM image
-3. Map SK→SPTM handler code for RETYPE/PHYS_TO_TYPE/REGISTER_DISPATCH_TABLE
-4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
+1. *** q_tail user-space exposure *** — does IONVMeFamily expose q_tail to user space via ioctl or IOSurface?
+   If yes: q_tail walk-off (Gap 2) = no prior code execution needed, fire from user space
+   Search IONVMeFamily PRELINK_TEXT for ioctl/IOUserClient handlers that take queue tail as param
+2. EnableLinearSQ() virtual method — callable from kext context; if attacker gets code exec in kext,
+   can set linear mode flag → enables the PA bypass (requires prior kext-level compromise)
+3. nvme-sptm EDT property in AppleANS3CGv2Controller::probe — unknown gating;
+   could select SPTM-mediated vs non-SPTM NVMe path
+4. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) to find SK entry in SPTM image
+5. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
 
 ## Files on disk (NOT in git)
 - sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
