@@ -1,5 +1,23 @@
 # Kernel Diff Project State
 
+---
+## INVESTIGATION LOG (quick reference — newest first)
+
+| Date | Path | Tool/File | Finding | Report |
+|---|---|---|---|---|
+| 2026-10-25 | nvme_instance writability | kc_27.0.1.macho + sptm_27.0.1.bin | IN PROGRESS | REPORT_NVME_INSTANCE.md |
+| 2026-10-25 | SET_SQ_ENTRY bounds | sptm_27.0.1.bin | 3 gaps: linear-mode PA bypass, q_tail walk-off, unchecked payload | REPORT_NVME_SQENTRY.md |
+| 2026-10-25 | NVMe eps 10–15 guards | sptm_27.0.1.bin | Not unguarded; VIOLATION_NVME_ILLEGAL_CALL + allowed_functions bitmask in __DATA | REPORT_NVME_UNGUARDED.md |
+| 2026-10-25 | SK binary location | IPSW 27.0.1 | SK sealed inside SPTM image; not standalone; bootstrapped by SPTM+0x9f90c GENTER | REPORT_SK_BINARY.md |
+| 2026-10-25 | mach_make_memory_entry | kc_26.6.1 vs kc_27.0.1 | vm_sanitize_telemetry.c entirely removed; 30+ VM APIs lost soft-landing correction layer | REPORT_MME_SANITIZE.md |
+| 2026-10-25 | Table 9 ep 0 callers | kc_27.0.1.macho | New XNU retype entry; arm64e PAC indirect; absent in 26.6.1; parallel to SK_TO_SPTM_RETYPE | REPORT_RETYPE_EP0.md |
+| 2026-10-25 | Table 0xe subsystem | kc_27.0.1.macho | SPTM_NVME; caller=com.apple.iokit.IONVMeFamily; PAC fn-ptr + preemption wrapper 0xab4bf78 | REPORT_TABLE0E.md |
+| 2026-10-25 | GENTER stub mapping | kc_26.6.1 + kc_27.0.1 | 150→173 stubs; table 0xe NEW (16 eps); universal CBNZ guard added; +28 dispatch IDs | REPORT_GENTER_MAP.md |
+| 2026-10-25 | SPTM binary diff | sptm_26.6.1.bin + sptm_27.0.1.bin | Dispatch redesign; SK exec mode; 3 GPU SAPT gaps closed; IOMMU registry new | REPORT_SPTM.md |
+| 2026-10-25 | 26.6.1 vs 27.0.1 kernel | kc_26.6.1 + kc_27.0.1 | +23 GENTER; __TEXT_EXEC +3.6MB; SPTM fn additions; mach_make_memory_entry MIG shift | REPORT_27.md |
+| 2026-10-25 | 26.1 vs 26.6.1 kernel | kc_26.1 + kc_26.6.1 | 300/302 kexts changed; __TEXT_EXEC -1.96MB; SPTM strings +19; PPL strings gone | REPORT.md |
+
+---
 ## Goal
 Diff kernelcaches between iOS 26.6.1 and iOS 26.1 for iPhone 16 Plus (iPhone17,4).
 Context: Trigon jailbreak study — tracking what Apple patched between these versions,
