@@ -80,7 +80,29 @@ Max escape per call = PAGE_SIZE - 1 = 0xFFF bytes
 
 ---
 
-## Surface 4 Status: STRUCTURALLY PLAUSIBLE — Requires Dynamic Test
+## Dynamic Test Result: ENTITLEMENT-GATED
+
+Tested on iOS 26.6.1 (iPhone 16 Plus) via a-Shell + Python ctypes:
+
+```
+# Parent creation (works fine):
+M(t,byref(s),a.value,3,byref(p),0) → kr=0, port=286039
+
+# Child exact-match (should trivially succeed):
+M(t,byref(z2),a.value,1,byref(c2),p) → kr=4 (KERN_INVALID_RIGHT)
+
+# Child escape test:
+M(t,byref(z),a.value+0xFFE,3,byref(c),p) → kr=4 (KERN_INVALID_RIGHT)
+```
+
+ANY use of parent_handle returns KERN_INVALID_RIGHT, even an exact-match read-only child.
+The parent port is valid (286039, non-zero) — the block is on the mechanism, not the port.
+
+**Conclusion:** Apple added a blanket gate on parent_handle usage in iOS 26.x as post-Trigon
+defense-in-depth. The dangerous bounds check ordering is present in the code but the entry
+point is blocked in sandboxed processes.
+
+## Surface 4 Status: STRUCTURALLY PLAUSIBLE — ENTITLEMENT-GATED in Sandboxed Context
 
 Static confirmation:
   ✓ All parent bounds checks use original size (before correction)
