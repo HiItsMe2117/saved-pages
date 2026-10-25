@@ -109,11 +109,13 @@ def get_data_offset(url, local_offset):
     return local_offset + 30 + filename_len + extra_len
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <ipsw_url> <output.im4p>")
+    if len(sys.argv) not in (3, 4):
+        print(f"Usage: {sys.argv[0]} <ipsw_url> <output.im4p> [search_string]")
+        print(f"  search_string defaults to 'kernelcache'; use e.g. 'sptm' or 'txm'")
         sys.exit(1)
 
     url, out = sys.argv[1], sys.argv[2]
+    search = sys.argv[3].lower() if len(sys.argv) == 4 else 'kernelcache'
 
     print(f"[*] Getting IPSW size...")
     size = get_content_length(url)
@@ -137,16 +139,16 @@ def main():
     for e in entries:
         print(f"    {e['name']}")
 
-    kc = next((e for e in entries if 'kernelcache' in e['name'].lower()), None)
+    kc = next((e for e in entries if search in e['name'].lower()), None)
     if not kc:
-        print("[-] No kernelcache entry found in the above list")
+        print(f"[-] No entry matching '{search}' found in the above list")
         sys.exit(1)
 
     print(f"[+] Found: {kc['name']}")
     print(f"    method={kc['compression']}  size={kc['compressed_size']:,} bytes")
 
     data_offset = get_data_offset(url, kc['local_offset'])
-    print(f"[*] Downloading kernelcache ({kc['compressed_size']//1024//1024} MB)...")
+    print(f"[*] Downloading {kc['name'].split('/')[-1]} ({kc['compressed_size']//1024//1024} MB)...")
     payload = curl_range(url, data_offset, data_offset + kc['compressed_size'] - 1)
 
     if kc['compression'] == 8:

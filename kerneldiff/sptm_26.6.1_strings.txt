@@ -1,0 +1,1935 @@
+__chain_starts
+__DATA_CONST
+__DATA_CONST
+__LATE_CONST
+__late_const
+__LATE_CONST
+[SK] Unhandled synchronous exception taken from GL1
+[SK] Unhandled synchronous exception taken from GL0
+[TXM] Unhandled synchronous exception taken from GL0
+[SPTM] Synchronous exception taken while SP0 selected in GL2
+[SPTM Dispatch] Synchronous exception taken while SP1 selected in GL2
+[PANIC DURING BOOTSTRAP] 
+[SK BOOTSTRAP PANIC] 
+[SK HIB PANIC] SK panic during SPTM hibernation hook
+[SPTM] Synchronous exception taken from guest before XNU bootstrap
+Assertion failed: %s, function %s, file %s, line %d.
+fmt->flags & FLAG_HAS_PRECISION
+src/libc/stdio/format.c
+write_integer
+0123456789abcdef
+0123456789ABCDEF
+Security assertion failed: %s, function %s, file %s, line %d.
+(len) <= (dstlen)
+__vsnprintf_chk
+src/libc/stdio/vsnprintf.c
+__memcpy_chk
+src/libc/string/memcpy.c
+(smax) <= (obj_size)
+__memset_s_chk
+src/libc/string/memset_s.c
+__strlcpy_chk
+src/libc/string/strlcpy.c
+(!cpylen && !cpylen) || (cpylen == ~((size_t)0)) || !((uintptr_t)src < (uintptr_t)dst + cpylen && (uintptr_t)dst < (uintptr_t)src + cpylen)
+(len) <= (obj_size)
+src/libc/strings/bzero.c
+stack check fail
+VIOLATION_UAT_INVALID_SUBTYPE
+VIOLATION_UAT_INVALID_TYPE
+VIOLATION_UAT_ILLEGAL_STATE_OBJECT_TYPE
+VIOLATION_UAT_INVALID_ROOT_TABLE
+VIOLATION_UAT_ILLEGAL_OBJECT_STATE
+VIOLATION_UAT_INVALID_OBJECT_OFFSET
+VIOLATION_UAT_INVALID_CONTEXT_ID
+VIOLATION_UAT_INVALID_REFCNT
+VIOLATION_UAT_INVALID_VADDR
+VIOLATION_UAT_INVALID_PADDR
+VIOLATION_UAT_INVALID_PT_LEVEL
+VIOLATION_UAT_ILLEGAL_FW_TABLE
+VIOLATION_UAT_ILLEGAL_TTE
+VIOLATION_UAT_ILLEGAL_MAP_FOUND_OCCUPIED_PTE
+VIOLATION_UAT_ILLEGAL_UNMAP_FOUND_FREE_PTE
+VIOLATION_UAT_ILLEGAL_PAGE_TABLE
+VIOLATION_UAT_INVALID_NUM_SEGS
+VIOLATION_UAT_INVALID_SEGMENT
+VIOLATION_UAT_ILLEGAL_TTBAT_MAPPING
+VIOLATION_UAT_INVALID_NUM_MAPPINGS
+VIOLATION_UAT_ILLEGAL_PREPARE_FW_UNMAP
+VIOLATION_UAT_ILLEGAL_CACHED_MAPPING
+VIOLATION_UAT_ILLEGAL_CACHE_FLUSH
+VIOLATION_UAT_INVALID_CTX_ID
+VIOLATION_UAT_ILLEGAL_SET_CTX_ID
+VIOLATION_UAT_ILLEGAL_REMOVE_CTX_ID
+VIOLATION_UAT_ILLEGAL_TTBAT_LOCK
+VIOLATION_UAT_INVALID_INFO_TYPE
+VIOLATION_UAT_ILLEGAL_CONTINUE_FW_UNMAP
+VIOLATION_UAT_ILLEGAL_ACTIVE_CTX_ID
+VIOLATION_UAT_ILLEGAL_MAP_OPTION
+VIOLATION_UAT_ILLEGAL_HW_FW_PERMS
+VIOLATION_UAT_INVALID_MICROPPL_MAGIC_VALUE
+%s: FTE %p should be held exclusive by sptm_retype()
+perform_gmmu_tlbi_if_needed
+%s: Only CPU pages may need a GMMU TLBI on retype
+%s: error %d looking up %s
+uat_get_dt_prop
+%s: %s is not %zu bytes wide (%d)
+sptm_uat_init_state
+sanitize_integer(ttbr1_root_table_paddr_U.UNSAFE_VALUE)
+%s: Non-zero root table paddr in state object %p %#llx
+sptm_uat_destroy_state
+state_object
+ttbr0_root_table_paddr
+ttbr0_refcnt
+ttbr1_root_table_paddr
+ttbr1_refcnt
+state_object->context_id
+sptm_uat_map_table
+sptm_uat_unmap_table
+%s: Parent page table has a zero refcnt
+%s: Corrupted map_data, current segment greater than number of segments %p %zu %zu
+sptm_uat_map_continue
+%s: Invalid cur_seg_offset %zu %zu
+sptm_uat_prepare_fw_unmap_begin
+0x4B1D000000000002ULL
+uat_instance->handoff_region->micro_magic
+sptm_uat_prepare_fw_unmap_continue
+sanitize_integer(state_object_handle_U.UNSAFE_VALUE)
+%s: Corrupted prepare_fw_unmap_data, cur_mapping greater than num_mappings %p %zu %zu
+flush->flush_state
+sptm_uat_unmap_begin
+%s: Context ID not set despite cache flush maybe being needed
+sptm_uat_unmap_continue
+uat_instance->handoff_region->powered_off
+sptm_uat_set_ctx_id
+(&uat_instance->ttbat_lock)
+sptm_uat_remove_ctx_id
+%s: Valid context ID but the TTBAT already contains invalid entries %p %d
+sptm_uat_get_info
+uat_instance->mode
+%s: Could not get devicetree
+uat_is_enabled
+%s: The /chosen devicetree node should always exist
+%s: The `gpu-iouat` property should be %lu bytes not %d
+%s: new type not XNU_IOMMU
+uat_retype_in
+retype_params.type
+%s: retyping from XNU_IOMMU but not to XNU_DEFAULT %u
+uat_retype_out
+%s: uat_instance is NULL
+uat_bootstrap_parse_dt
+%s: error %d looking up /arm-io/sgx
+agx-address-space-mgmt-mode
+issue-gmmu-tlbis-at-retype
+gfx-shared-region-base
+gfx-shared-region-size
+%s: The ASC carveout region is smaller than a page in size or not a multiple of the SPTM_PAGE_SIZE %llu
+gfx-shared-l2-region-base
+gfx-shared-l2-region-size
+%s: The TTBR1 shared L2 region size (0x%llx) is not equal to the SPTM_PAGE_SIZE
+gpu-region-base
+gpu-region-size
+%s: The TTBAT is smaller than a page in size or not a multiple of the SPTM_PAGE_SIZE %llu
+gfx-handoff-base
+gfx-handoff-size
+%s: The Handoff region is smaller than a page in size or not a multiple of the SPTM_PAGE_SIZE %llu
+%s: error %d looking up /defaults
+uat-enforce-gpu-carveout
+%s: uat-enforce-gpu-carveout is not %zu bytes wide (%d)
+uat-vaddr-size
+%s: uat-vaddr-size is %zu bytes wide (%d)
+%s: Invalid vaddr size specified in device tree (%d). Valid values are %d to %d inclusive
+uat-segment-limit
+uat-mapping-limit
+%s-data%s-base
+%s: The %s data%s segment base(%#llx) is not page-aligned
+uat_register_gfx_data_segment
+%s-data%s-size
+%s: The %s data%s segment size(%#llx) is not a multiple of the page size
+uat_atomically_change_subtype
+uat_page_paddr
+uat_state_get_root_table_paddr
+%s: %d is not a valid UAT state object type when getting TTBR%d
+uat_state_set_root_table_paddr
+uat_walk_tables
+root_table_paddr
+%s: Invalid UAT mode found %llu
+uat_get_table_ttep
+%s: Invalid page table level specified %#llx %u.
+uat_vaddr_tt_index
+%s: Attempted a TLB flush on a TTBR%d address but UAT state object type %d has no TTBR%d
+issue_tlbi_by_addr
+%s: Copying segments into %p will overflow the state object page %zu
+uat_copy_segments_locally
+uat_validate_map_segment
+segment->start_paddr
+segment->num_mappings
+uat_map_segment
+uat_instance->ttbat_region.paddr
+hw_fw_perms_to_dprr_index
+%s: Corrupted unmap_data, current segment greater than number of segments %p %zu %zu
+uuc_segment_walker
+uat_validate_unmap_segment
+segment->start_vaddr
+uuc_unmap_pte_update
+%s: Attempted a TLB Invalidate by ASID on a UAT state object with type %d
+issue_tlbi_by_asid
+%s: invalid context ID %p %u
+%s: Execution Modes cannot be supported by more than one domain
+populate_execution_modes
+%s: Invalid Execution Mode permissions for type %d
+populate_overlay_indices
+%s: Invalid permissions found for the PAPT mapping (type_id = %d)
+configure_late_apple_regs
+%s: unsupported entry, bind: %d
+%s: unsupported auth_rebase key %d
+%s: fixup ptr format is unsupported %d
+%s: AMCC [%p-%p] and ACC [%p-%p] CTRR-C regions don't match
+init_pre_late_io_reservation
+%s: AMCC [%p-%p] and ACC [%p-%p] CTRR-D regions don't match
+sptm_register_cpu
+%s: CPU not found in the device tree %p
+%s: Error looking up image region
+sptm_slide_region
+target_papt_start
+%s: Number of supported PAPT ranges has been exhausted
+%s: Not enough SK entropy
+CL4-dummypage
+ExclaveOSIntegrityCatalog
+ExclaveOSTrustCache
+BootKC-entry
+exclaves-enabled
+Starting SK...
+Starting TXM...
+SK bootstrap complete.
+%s: TXM not yet fixed up
+sptm_init_txm_bootstrap_complete
+TXM bootstrap complete.
+Bootstrapping XNU...
+%s: Too many handoff pages!
+sptm_resume_cpu
+%s: DT memory-map is NULL
+init_get_image_region
+%s: error %d looking up image region '%s'
+%s: error %d looking up chosen/memory-map
+validate_papt_address_range
+copy_and_clear_random_seed
+%s: Error looking up /chosen/%s
+%s: random-seed (%p) size mismatch (%d) or NULL
+kernel-ctrr-to-be-enabled
+%s: unexpected size %xu for bool property 'kernel-ctrr-to-be-enabled'
+sptm_determine_kernel_ctrr
+%s: BootKC rs region does not fit xnu_ro_data (needed: %zu, have: %zu)
+init_xnu_ro_data
+%s: xnu ro pagetables don't begin on page boundary
+%s: xnu ro pagetables don't end on page boundary
+%s: %s not fully within BootKC ro region
+xnu_el2_exception_vector
+xnu_ctrr_dispatch_table
+xnu_ro_pagetables_begin
+xnu_ro_pagetables_end - 1
+/chosen/asmb
+%s: init_get_image_region returned NULL for a non-optional region
+validate_region_order
+%s: region '%s' beginning [%p] or end [%p] is invalid
+%s: region '%s' [%p-%p] not immediately after region '%s' [ending at %p]
+VIOLATION_CPUTRACE_MODE_MISMATCH
+VIOLATION_CPUTRACE_STRM_BASE
+VIOLATION_CPUTRACE_PA_BUFFER
+VIOLATION_CPUTRACE_VA_REGION
+VIOLATION_CPUTRACE_VA_FRAME
+VIOLATION_CPUTRACE_VA_BUFFER
+VIOLATION_CPUTRACE_VA_TYPE
+VIOLATION_CPUTRACE_VA_UNMAPPED
+VIOLATION_CPUTRACE_VA_RACE
+VIOLATION_CPUTRACE_VA_ACTIVE
+VIOLATION_CPUTRACE_VA_INITIALIZED
+VIOLATION_CPUTRACE_VA_DEINITIALIZED
+%s: clusters not deinitialized before hibernating.
+sptm_cputrace_hib_wake
+%s: cluster not deinitialized before hibernating.
+sptm_cputrace_set_base
+cputrace_mode_bits()
+sptm_cputrace_start
+sptm_cputrace_stop
+sptm_cputrace_va_frame_lock
+(&cputrace_instance->va_guard)
+cputrace_instance->initialized_count
+va_region_id
+active_refcnt
+sptm_cputrace_va_frame_unlock
+sptm_cputrace_va_init
+cputrace_get_cluster_id()
+%s: assert '!__builtin_add_overflow(cputrace_instance->initialized_count, 1, &cputrace_instance->initialized_count)' failed.
+sptm_cputrace_va_deinit
+%s: assert '!__builtin_sub_overflow(cputrace_instance->initialized_count, 1, &cputrace_instance->initialized_count)' failed.
+sptm_cputrace_va_set_base
+sptm_cputrace_va_start
+sptm_cputrace_va_stop
+%s: carveout_nb_frames %#llx %#llx does not fit in an unsigned int.
+cputrace_bootstrap
+cputrace_get_carveout_size_mib
+apt-carveout-size-mb
+cputrace_va_locked_frame_lock
+new_frame_paddr
+cputrace_va_locked_region_add
+%s: assert '(!region_start) == (!region_size)' failed.
+%s: assert '!(region_start & SPTM_PAGE_MASK)' failed.
+%s: assert '!(region_size & SPTM_PAGE_MASK)' failed.
+%s: assert '!__builtin_add_overflow(region_start, region_size, &region_end)' failed.
+region_start
+%s: assert '!__builtin_add_overflow(region_size, SPTM_PAGE_SIZE, &region_size)' failed.
+cputrace_va_locked_region_remove
+%s: assert 'region_size >= SPTM_PAGE_SIZE' failed.
+cputrace_va_locked_frame_unlock
+%s: assert 'cluster_id < CPUTRACE_NB_CLUSTERS' failed.
+cputrace_get_cluster_id
+%s: assert 'region->active_refcnt' failed.
+cputrace_locked_va_set_buffer_vaddr
+%s: Error getting SecureDT
+hib_bootstrap_determine_support
+%s: Number of hibernation segments passed by iBoot is larger than NUM_HIBSEGINFO_SEGMENTS %zu
+%s: address (%#llx) or size (%zu) of iBoot loaded range is not page aligned
+hib_bootstrap_register_iboot_loaded_range
+%s: Reached the maximum number of iBoot loaded ranges %d (%#llx %zu)
+chosen/hibernation
+/Library/Caches/com.apple.xbs/1317EC95-92D1-4B00-913F-43F0A5A6B281/TemporaryDirectory.NReMzg/Sources/SPTM/sptm/core/sptm_hibentry.c
+chosen/hibernation node not found in DT for key
+key has unexpected size
+key property found but key is NULL
+key not found in DT
+key is all-zero
+%s: %s:%u: %s (%#llx/%s)
+hib_sptm_panic_func
+%s: Error looking up /hibernate
+hib_bootstrap_cold
+%s: Error looking up /hibernate/hmac-reg-base
+%s: hmac-reg-base (%p) size mismatch (%d) or NULL
+/chosen/hibernation
+key-exclave-entropy
+%s: dt /chosen/hibernation/key-exclave-entropy length mismatch (%zu != %zu)
+%s: SK_HIB_patchup() returned error (%llu)
+hib_bootstrap_patchup
+%s: SPTM HIB: Seed and Keys for key0 haven't been programmed yet
+compute_hardware_hmac
+%s: SPTM HIB: Error occurred while hashing data, IRQ: %#x
+sptm_hib_begin
+sptm_hibentry.c
+is_hib_supported()
+interrupts_enabled()
+scratch_io_buffer_pages[i]
+%s: Hibernation is supported, but there's no hibernation segments. That shouldn't be possible.
+%s: SK_HIB_start() returned error (%llu)
+%s: Invalid current hibseg %zu
+sptm_hib_hash_hibseg_page
+%s: The current hibseg page is out of the bounds of the hibernation segment %d %d %d
+%s: Found non-DRAM hibernation segment page %#llx
+%s: attempting to hibernate immutable page %p
+sptm_hib_hash_page
+%s: SK_HIB_finish() returned error (%llu)
+sptm_hib_finalize_sk
+%s: Finalizing the image but the SHA context is not set correctly %d.
+sptm_hib_finalize_image
+sptm_hib_verify_hash_non_wired_page
+%s: Somehow we're in the verify non-wired mem state, but the SHA context isn't correct %d
+sptm_hib_verify_finalize_non_wired_hash
+%s: region marked as both needing hibernation and forbidden for write during hib restore: addr %p, size %zu, wimg %#x
+parse_hibernate_io_ranges
+%s: Attempted to register more than %d pmap-io-ranges as needing hibernating. The MAX_HIB_IO_RANGES limit probably needs increasing.
+%s: Attempted to register a managed memory region as an IO range that needs to be hibernated %p %p
+%s: Attempted to register an unaligned IO range that needs to be hibernated %p %p
+%s: %p length is greater than the maximum allowed for a 32-bit integer (%llu)
+hib_init_sha_context
+%s: Unexpected current SHA context type %d %d
+hib_acquire_state
+&hib_state.current_state
+HIB_STATE_LOCKED
+hib_release_state
+%s: Found SK-owned memory in non-wired memory
+hib_copy_and_hash_page
+%s: SK_HIB_encrypt(0x%llu) returned error (%llu)
+hib_mark_page_as_hibernated
+validate_page
+hib_enforce_required_mem_was_hibernated
+was_hibernated
+iboot_loaded_range
+range->first_page
+range->page_count
+range->next_page_to_hash
+%s: CTRR-A per-core register not locked by iBoot (expected: %llx, got: %llx)
+ctXr_check_all_regions
+%s: CTRR-B per-core register not locked by iBoot (expected: %llx, got: %llx)
+%s: CTRR-A per-cluster register not locked by iBoot (expected: %llx, got: %llx)
+%s: CTRR-B per-cluster register not locked by iBoot (expected: %llx, got: %llx)
+%s: CTRR-C already locked! %#llx
+ctrr_lock_sptm
+%s: CTRR-D already locked! %#llx
+%s: %s begin invalid: %#llx
+validate_ctXr_region_bounds
+%s: %s end invalid: %#llx
+%s: CTRR-%s begin > end: %#llx > %#llx
+%s: %s configuration not as expected: actual %#llx != expected %#llx
+ctrr_ctxr_check_region
+%s: %s core region bounds [%p %p] mismatch stashed regions [%p %p]
+VIOLATION_NVME_INVALID_QID
+VIOLATION_NVME_INVALID_CID
+VIOLATION_NVME_INVALID_PAGE_COUNT
+VIOLATION_NVME_INVALID_NVME_PAGE
+VIOLATION_NVME_INVALID_NLB
+VIOLATION_NVME_ILLEGAL_CALL
+VIOLATION_NVME_ILLEGAL_CID_STATE_TRANSITION
+VIOLATION_NVME_ILLEGAL_FUNC_CALL_STATE
+VIOLATION_NVME_ILLEGAL_QUEUE_ADDRESS
+VIOLATION_NVME_ILLEGAL_QUEUE_LENGTH
+VIOLATION_NVME_ILLEGAL_NVMe_QUEUEING_PROTOCOL_VERSION
+VIOLATION_NVME_ILLEGAL_NVMe_QUEUE_ENTRIES_MISMATCH
+VIOLATION_NVME_ILLEGAL_ANS_SHA_ADDRESS
+VIOLATION_NVME_ILLEGAL_ANS_SHA_PACKED_WRITES_CONFIG
+VIOLATION_NVME_ILLEGAL_ANS_SHA_BUFFER_SIZE
+VIOLATION_NVME_ILLEGAL_SEG_COUNT
+%s: Zero TCB entries per queue is not supported
+nvme_bootstrap
+%s: Too many TCB entries per queue:%u
+%s: iommu_bootstrap_alloc_frames() returns 0
+sptm_nvme_map_pages
+&nvme_instance->cid_mode[c_id]
+%s: TCB entry %d is not invalidated in DRAM for qid %d cid %d
+%s: TCB entry: %d NLB is not zero
+%s: Both WR bits are set !
+template->NLB
+sptm_nvme_unmap_pages
+(nvme_cid_mode_t)(((uint8_t)(q_id) << 4) | CID_FILLED_q)
+(nvme_cid_mode_t)(((uint8_t)(q_id) << 4) | CID_FILLED_RETRY_q)
+sptm_nvme_bar_admin_queue_regs
+&nvme_instance->func_state[4]
+FUNC_CALLABLE
+%s: AQA doesnt match the previously cached value !
+sptm_nvme_bar_ioqa_reg
+&nvme_instance->func_state[5]
+%s: IOQA doesnt match the previously cached value !
+sptm_nvme_bar_iosq_reg
+&nvme_instance->func_state[6]
+sptm_nvme_bar_iocq_reg
+&nvme_instance->func_state[7]
+%s: ANS SHA flag was not set
+sptm_nvme_ans_sha_reg
+&nvme_instance->func_state[8]
+validate_nvme_call_allowed
+nvme_instance->allowed_functions
+%s: Could not find /defaults
+read_edt_properties
+nvme-iboot-sptm-security
+%s: Could not find /arm-io/ans
+nvme-secure-bar
+nvme-secure-reg-layout
+nvme-linear-sq
+nvme-prp-flush-wa
+nvme-queue-entries
+%s: Couldn't find nvme-queue-entries
+nvme-vdma-wa
+%s: Could not find /arm-io/ans.reg
+%s: /arm-io/ans.reg bad size
+%s: Unexpected ANS register size
+%s: Could not find nvme-num-sl
+nvme-ans-sha-present
+chosen/carveout-memory-map
+region-id-%d
+%s: Unexpected size of region id 55
+validate_qid
+nvme_validation.h
+validate_cid
+validate_nvme_page
+%s: f2h and h2f bits are set !
+invalidate_tcb_entry
+%s: ANS invalidation failed with state: %u
+validate_nvme_queue_entries
+queue_entries
+validate_nvme_protocol_version
+protocol_version
+validate_nvme_queue_len
+nvme_queue_len
+validate_nvme_queue_addr
+nvme_queue_addr
+validate_nvme_sha_buffer_size
+nvme_ans_sha_buffer_size
+validate_nvme_sha_base_addr
+nvme_ans_sha_addr
+validated_nvme_ans_sha_addr
+validate_nvme_sha_packed_write_config
+packed_writes_config
+/chosen/lock-regs
+%s: /chosen/lock-regs not found
+ctrr_amcc_find_lock_group_data
+assert_ctrr_group_region_unlocked
+%s: lock group %u %s region has been locked unexpectedly
+assert_amcc_cache_disabled
+%s: AMCC cache has been enabled unexpectedly
+%s: Malformed %s memory region %p %p
+ctrr_map_lock_group
+ctrr_stash_group_regions
+%s: region %s page size does not agree, shift count: %d
+%s: /chosen/lock-regs/%s not found
+ctrr_dt_get_lock_group
+aperture-count
+%s: %s %s %u exceeds maximum %u
+aperture-size
+%s: %s have %u apertures, but 0 size
+plane-stride
+%s: %s plane-count (%u) > 1, but stride is 0/missing
+%s: %s aperture-size (%#x) is insufficent to cover plane-count (%#x) of plane-stride (%#x) bytes
+aperture-phys-addr
+%s: %s missing required %s
+%s: %s aperture-phys-addr size (%#x) != (aperture-count (%#x) * PA size (%#zx) = %#lx)
+cache-status
+%s: Could not find required property '%s'
+ctrr_dt_get_uint32
+%s: Found unexpected size for property %s %u
+%s-reg-offset
+%s-reg-value
+%s: /chosen/lock-regs/%s/%s not found
+ctrr_dt_get_lock_type
+page-size-shift
+write-disable
+%s: /chosen/lock-regs not found (your iBoot or EDT may be too old)
+ctrr_dt_get_memcache_enable_status
+early-memcache-enable
+ctrr_dt_get_force_flush_offset
+force-flush-offset
+ctrr_set_mc_hint_in_cpm
+mc-hint-cpm-impl-offset
+mc-hint-cpm-impl-mask
+mc-hint-cpm-impl-val
+ctrr_dt_get_uint64
+acquire_uat_state_object
+uat_validation.c
+state_object_handle
+uat_instance->state_object_size
+*iommu_frame_tsd(state_object_handle)
+state_object->type
+allowed_types
+&state_object->current_state
+expected_state
+UAT_STATE_LOCKED
+release_uat_state_object
+acquire_uat_translation_table
+*iommu_frame_tsd(pt_paddr)
+expected_subtype
+validate_uat_table_descriptor_level
+validate_uat_vaddr_range
+_range_start
+validate_uat_context_id
+validate_uat_get_info_type
+acquire_uat_segments_page
+segments_page
+validate_uat_segment_number
+num_segments
+validate_uat_map_options
+%s: Accessing Shared Mode global data outside Shared Mode
+uat_shared_mode_global_data
+%s: Accessing Private Mode global data outside Private Mode
+uat_private_mode_global_data
+uat_validate_paddr
+((-1UL) >> (64 - (40)))
+(0x10000000000)
+PANIC_BUF_SIZE(%u) and CONSISTENT_DEBUG_PANIC_LEN(%zu) is less than panic_string_buf size(%d)
+TRUNCATED ORIGINAL PANIC:
+%s: [SPTM]: somehow a violation was triggered in early boot. That shouldn't be possible, %s: %s
+env_violation
+[SPTM] %s: %s
+VIOLATION_SART_INVALID_PT
+VIOLATION_SART_INVALID_PADDR
+VIOLATION_SART_INVALID_N_OPS
+VIOLATION_SART_INVALID_SIZE
+VIOLATION_SART_INVALID_PERM
+VIOLATION_SART_INVALID_OPTIONS
+VIOLATION_SART_ILLEGAL_STATE
+VIOLATION_SART_NO_SPACE
+VIOLATION_SART_ILLEGAL_MAP
+VIOLATION_SART_ILLEGAL_UNMAP
+VIOLATION_SART_CPU_RACE
+VIOLATION_SART_INVALID_CONFIG
+VIOLATION_SART_POWER
+VIOLATION_SART_INVALID_STATE
+sptm_sart_unmap_region
+%s: Invalid SART version %d from EDT
+sart_bootstrap
+%s: error %d looking up '%s'
+sart_bootstrap_parse_edt
+arm-io/sart-ans
+%s: error %d looking up '%s' - SPTM/EDT misconfiguration
+sart-version
+sart-ans/sart-version
+%s: DT property '%s' has illegal size %zu
+sart-throttle-version
+sart-ans/sart-throttle-version
+sart-throttle-offset
+sart-ans/sart-throttle-offset
+power-canary-offset
+sart-ans/regs
+%s: Illegal SART Register Size %d
+sart-ans/power-canary-offset
+exclusive-bounds
+validate_sart_address_range
+sart_validation.h
+validate_size
+enforce_paddr_managed
+sptm_internal.h
+validate_sart_mapping_perms
+sart_instance->iommu_instance.iommu_id
+validate_sart_mapping_options
+sart_instance_acquire
+(&sart_instance->mtx_guard)
+%s: overflow
+sart_assert_power_canary
+sart_add_region
+%s: n_region overflow
+sart_instance_release
+%s: Invalid SART size region %d
+sart_get_registers
+%s: Invalid SART offset %x
+sart_read_reg
+%s: n_region underflow
+sart_remove_region_cache
+%s: Invalid Region ID %d
+sart_remove_region_hw
+%s: could not zero sart region
+sart_write_reg
+sart_write_throttle_cfg
+%s: power canary underflow
+sart_deassert_power_canary
+sart_instance->powerCanaryRefCnt
+validate_sart_state
+%s: Invalid bootloader mapping covers managed memory %llx
+sart_bootstrap_register_bootloader_mappings
+%s: Sart invalid throttle regs.
+sart_sanity_check_throttles
+%s: Sart invalid throttle cfg [%d] = 0x%x
+sart_set_registers
+EXEC_MODE_SPTM_DEFAULT
+EXEC_MODE_TXM_DEFAULT
+EXEC_MODE_XNU_DEFAULT
+EXEC_MODE_XNU_ROZONE_RW
+EXEC_MODE_XNU_USER_DEFAULT
+EXEC_MODE_XNU_USER_JIT_RW
+EXEC_MODE_XNU_USER_TPRO_RW
+VIOLATION_T8110_DART_RACE
+VIOLATION_T8110_DART_SID_RACE
+VIOLATION_T8110_DART_INVALID_RETYPE_NEW_TYPE
+VIOLATION_T8110_DART_INVALID_LEVEL
+VIOLATION_T8110_DART_INVALID_RETYPE_LEVEL
+VIOLATION_T8110_DART_INVALID_TSD_LEVEL
+VIOLATION_T8110_DART_INVALID_DART_ID
+VIOLATION_T8110_DART_INVALID_RETYPE_DART_ID
+VIOLATION_T8110_DART_INVALID_TSD_DART_ID
+VIOLATION_T8110_DART_INVALID_SID
+VIOLATION_T8110_DART_INVALID_RETYPE_SID
+VIOLATION_T8110_DART_INVALID_TSD_SID
+VIOLATION_T8110_DART_INVALID_NBYTES
+VIOLATION_T8110_DART_INVALID_MAP_OPTION
+VIOLATION_T8110_DART_INVALID_DVA
+VIOLATION_T8110_DART_INVALID_DVA_END
+VIOLATION_T8110_DART_INVALID_FTE_TYPE
+VIOLATION_T8110_DART_INVALID_TARGET_LEVEL_TTE
+VIOLATION_T8110_DART_INVALID_INTERMEDIATE_LEVEL_TTE
+VIOLATION_T8110_DART_INVALID_PTE_REMAP
+VIOLATION_T8110_DART_PROT_MISMATCH
+VIOLATION_T8110_DART_INVALID_DART_INSTANCE
+VIOLATION_T8110_DART_INVALID_POWER_STATE
+VIOLATION_T8110_DART_INVALID_ERR_MASK
+VIOLATION_T8110_DART_INVALID_HARDWARE_VERSION
+VIOLATION_T8110_DART_INVALID_SMMU_WINDOW
+VIOLATION_T8110_DART_INVALID_STT_DEPTH
+VIOLATION_T8110_DART_INVALID_STT_INDEX
+VIOLATION_T8110_DART_FREE_TABLE_IN_USE
+VIOLATION_T8110_DART_UNPERMITTED_TLIMIT_CLAMP
+VIOLATION_T8110_DART_MULTIPLE_MAP_TABLE
+VIOLATION_T8110_DART_SID_ACCESS_DENIED
+VIOLATION_T8110_DART_INVALID_SK_POLLER
+VIOLATION_T8110_DART_INVALID_ADDRESS
+VIOLATION_T8110_DART_INVALID_PTE
+VIOLATION_T8110_DART_INVALID_MAPPING
+VIOLATION_T8110_DART_INVALID_UNMAP
+VIOLATION_T8110_DART_INVALID_TLB_OP_INDEX
+VIOLATION_T8110_DART_PS_WR_DIS_RACE
+/Library/Caches/com.apple.xbs/1317EC95-92D1-4B00-913F-43F0A5A6B281/TemporaryDirectory.NReMzg/Sources/SPTM/sptm/iommu/dart/t8110dart.c
+t8110dart_retype_in
+%s: dart %s:%s:%d: %s == NULL
+%s: dart %s:%s:%d: alloc size must be greater than 0
+t8110dart_bootstrap_allocate
+%s: dart %s:%s:%d: allocation requests must not have a size greater than one page (%#llx)
+t8110dart_bootstrap_tz
+inclusive-tz-range
+%s: dart %p (%s:%u): TZ select greater than max
+%s: dart %p (%s:%u): TZ config greater than max
+%s: dart %p (%s:%u): Disabled TZT region %u invalid %#x %#x %#x
+%s: dart %p (%s:%u): Enabled TZT region %u invalid %#x %#x %#x
+t8110dart_bootstrap_sid
+%s: dart %p (%s:%u): SID %u is greater than the maximum
+%s: dart %p (%s:%u): SID 0 is invalid with Dynamic SID Assignment
+%s: dart %p (%s:%u): APF bypass and Dynamic SIDs are mutually exclusive
+%s: dart %p (%s:%u): overflow
+%s: dart %p (%s:%u): vm-base-%u must be of size %zu
+%s: dart %p (%s:%u): vm-size-%u must be of size %zu
+%s: dart %p (%s:%u): %hu: Per-SID vm-base/vm-size override not supported for this class of DART
+%s: dart %p (%s:%u): SID %u: per-sid vm-base/vm-size override unsupported for Dynamic SID Assignment
+%s: dart %p (%s:%u): Per-SID (%u) vm-base/vm-size override may increase VM limits
+%s: dart %p (%s:%u): Per-SID (%u) vm-size must be within global range
+%s: dart %p (%s:%u): SID %u end page %u is greater than maximum
+%s: dart %p (%s:%u): Invalid SID (%u) configured as bypass
+%s: dart %p (%s:%u): SID %u: remap and bypass are mutually exclusive 
+%s: dart %p (%s:%u): SID %u: remap and translation are mutually exclusive 
+%s: dart %p (%s:%u): pt-region-%d incorrectly sized
+%s: dart %p (%s:%u): SID %u: page table carveout not page-aligned
+%s: dart %p (%s:%u): SID %u: page table carveout size not page-aligned
+%s: dart %p (%s:%u): carveout pages %zu must be < %u
+%s: dart %p (%s:%u): %s: invalid papt returned by iommu_bootstrap_register_io_range
+%s: dart %p (%s:%u): Cannot specify Per-SID (%u) realtime with global realtime
+t8110dart_bootstrap_sids
+%s: dart %p (%s:%u): sid-count %u is greater than max permitted sids %u
+ignore-sid-count-mismatch
+max-sids-in-mismatch
+%s: dart %p (%s:%u): SID Remap incompatible with Dynamic SID Assignment
+%s: dart %p (%s:%u): Malformed 'remap' property
+%s: dart %p (%s:%u): remap %u -> %u is greater than max SID %u
+%s: dart %p (%s:%u): Remap src SID %u already remapped to %u
+%s: dart %p (%s:%u): Remap dst SID %u already remapped to %u
+%s: dart %p (%s:%u): SID %u: SID remapped to itself: %#x
+%s: dart %p (%s:%u): missing %s property
+%s: dart %p (%s:%u): sid count %u greater than maximum
+%s: dart %p (%s:%u): SID count (%u) must be greater than 0
+%s: dart %p (%s:%u): malformed %s property
+%s: dart %p (%s:%u): mismatch between 'sid-count' (%u) and 'sid' (%u) property length
+%s: dart %p (%s:%u): exclave sid count %u greater than maximum
+%s: dart %p (%s:%u): SID %u: Not initialized
+%s: dart %p (%s:%u): SID remap %u->%u invalid target
+%s: dart %s:%s:%d: error getting SecureDT
+t8110dart_bootstrap
+%s: dart %s:%s:%d: error %d looking up %s
+debug-enabled
+%s: dart %s:%s:%d: unexpected size for 'debug-enabled'
+dart-clock-protection
+dart-ps-wr-dis-entries
+%s: dart %s:%s:%d: unexpected size for 'dart-ps-wr-dis-entries'
+dart-clock-gapf-ungang-count
+%s: dart %s:%s:%d: unexpected size for 'dart-clock-gapf-ungang-count'
+dart-gapf-sr-region
+%s: dart %s:%s:%d: unexpected size for 'dart-gapf-sr-region'
+dart-clock-gapf-ungang-entries
+%s: dart %s:%s:%d: unexpected size for 'dart-clock-gapf-ungang-entries'
+sptm_t8110dart_map_table
+state->power_state
+(&state->sids[sid]->lock)
+%s: state_guard_release - %#llx, %#llx
+sptm_t8110dart_unmap_table
+ttes[level]->raw
+nested_level
+sptm_t8110dart_map
+%s: dart %p (%s:%u): The scratch size requested must be <= T8110_DART_PAGE_SIZE
+unregister_wrprot
+sptm_t8110dart_unmap
+sptm_t8110dart_init
+(&state->lock)
+sptm_t8110dart_powerup
+sptm_t8110dart_powerdown
+%s: dart %p (%s:%u): power down not permitted as SK still using the DART
+sptm_t8110dart_query_tlb
+sptm_t8110dart_set_smmu_window
+sptm_t8110dart_read_smmu_stt_index
+sptm_t8110dart_clamp_tlimits
+sptm_t8110dart_clear_err
+%s: dart %p (%s:%u): DART instance %u: Unrecoverable secondary error 0x%08x
+sptm_t8110dart_clear_exception
+sptm_t8110dart_disable_translation
+sptm_t8110dart_enable_translation
+t8110dart_read_dart_reg
+%s: dart %p (%s:%u): Invalid DART instance %u
+t8110dart_read_smmu_reg
+%s: dart %p (%s:%u): Invalid SMMU instance %u
+%s: dart %p (%s:%u): Invalid DAPF instance %u
+t8110dart_read_gapf_reg
+%s: dart %p (%s:%u): Invalid GAPF instance %u
+state->gapfs[instance].register_base
+t8110dart_write_dart_reg
+t8110dart_write_smmu_reg
+t8110dart_write_dapf_reg
+t8110dart_write_gapf_reg
+t8110dart_verify_dapf_reg
+%s: dart %p (%s:%u): DART instance %u: Attempt to modify locked reg %p 0x%08x->0x%08x
+t8110dart_verify_dart_reg
+t8110dart_sid_is_valid
+t8110dart_sid_is_valid_apf_remap
+t8110dart_addr_to_te_phy
+t8110dart_addr_to_page
+dart_assert_prop_size
+%s: dart %s:%s:%d: state %p (%s:%u): expected size %u for '%s', but it is %u
+t8110dart_new_sid
+%s: dart %p (%s:%u): invalid SID %u
+%s: dart %p (%s:%u): SID %u already allocated
+t8110dart_get_sid_property
+%s: dart %s:%s:%d: invalid %s size %u
+t8110dart_validate_carveout_table
+%s: dart %p (%s:%u): SID %u level %hhu table PA %#llx falls outside carveout region
+%s: dart %p (%s:%u): SID %u TZ Dead Page only permitted in 3 level translation STEs
+%s: dart %p (%s:%u): SID %u dead page must be zero
+%s: dart %p (%s:%u): SID %u TZ Dead Page not in TZ REGION at STE %zu
+%s: dart %p (%s:%u): SID %u leaf page table flags present in level %hhu page table entry %#zx: 0x%016llx
+t8110dart_carveout_phys_to_papt
+%s: dart %p (%s:%u): Unable to convert secure carveout physical address %llx to a PAPT
+%s: dart %p (%s:%u): Number of %s props (%u) is greater than max permitted sids (%u)
+t8110dart_bootstrap_preconfig_exception_sid
+%s: dart %p (%s:%u): %s (%u) must be less than sid-count (%u)
+t8110dart_bootstrap_instance
+%s: dart %s:%s:%d: error %d getting dart-id
+%s: dart %s:%s:%d: expected size %zu for '%s', but it is %u
+%s: dart %s:%s:%d: error %d invalid DART ID: %u
+%s: dart %s:%s:%d: DART ID %u used twice
+%s: dart %s:%s:%d: error %d getting name
+txm-secure-channel-base
+txm-secure-channel-size
+allow-vm-reserve-mapping
+%s: dart %p (%s:%u): Start of the VM reserve space must be less than the end.
+dart-options
+%s: dart %p (%s:%u): %s and %s are mutually exclusive
+enable-perf-counters
+allow-mixed-bypass-mode
+flush-by-dva
+avoid-tlbi-in-map
+noncompliant-dead-mappings
+clamp-tlimits
+%s: dart %p (%s:%u): vm-size must be non-zero, but it is %#llx
+%s: dart %p (%s:%u): invalid vm-size %#llx
+%s: dart %p (%s:%u): vm-base %#llx is greater than the maximum DVA %#llx
+%s: dart %p (%s:%u): vm-size %#llx is less than the maximum size %#llx
+%s: dart %p (%s:%u): end of vm range %#llx is greater than the maximum DVA %#llx
+vm-alignment
+%s: dart %p (%s:%u): invalid size %u for vm-alignment
+%s: dart %p (%s:%u): invalid vm_alignment
+ignore-secondary
+allow-apf-sid-remap
+relaxed-rw-protections
+t8110dart_bootstrap_dart_instances
+%s: dart %p (%s:%u): malformed 'instances' property
+%s: dart %p (%s:%u): invalid 'instance' size %u
+%s: dart %p (%s:%u): max %s instances exceeded
+%s: dart %p (%s:%u): invalid instance type: 0x%08x
+%s: dart %p (%s:%u): missing '%s' property
+%s: dart %p (%s:%u): incorrect size for 'reg'
+%s: dart %p (%s:%u): 'instance'/'reg' property count mismatch
+%s: dart %p (%s:%u): mis-aligned DART register size %#llx
+t8110dart_bootstrap_dart_instance_properties
+%s: dart %p (%s:%u): mis-aligned DART register base %#llx
+dart-tunables-instance-%d
+%s: dart %p (%s:%u): Malformed dart-tunables-instance-%u
+t8110dart_validate_tunable
+%s: dart %p (%s:%u): DART instance %u: invalid tunable offset %#x
+%s: dart %p (%s:%u): Invalid DART instance (%u) for SMMU instance (%u)
+t8110dart_bootstrap_smmu_instance_properties
+%s: dart %p (%s:%u): smmu instance %u 'reg' not page sized
+%s: dart %p (%s:%u): mis-aligned SMMU register base %#llx
+allow-pte-remap
+%s: dart %p (%s:%u): PTE remap not permitted
+pte-remap-carveout-only
+%s: dart %p (%s:%u): PTE remap from carveout is present but remap itself isn't allowed
+%s: dart %p (%s:%u): unexpected dram base
+t8110dart_bootstrap_dapf_instance_properties
+%s: dart %p (%s:%u): APF is incompatible with Dynamic SID Assignment
+dual-vc-llt-workaround-%d
+%s: dart %p (%s:%u): Multiple instances using dual vc limits
+%s: dart %p (%s:%u): invalid dual-vc-llt-workaround size
+%s: dart %p (%s:%u): num_dual_vc_limits %u exceed maximum %u
+%s: dart %p (%s:%u): dual VC LLT limit %d is invalid: [%#llx,%#llx]
+dapf-instance-%d
+%s: dart %p (%s:%u): malformed dapf-instance-%u
+%s: dart %p (%s:%u): dapf-instance-%d must have at least one slice
+%s: dart %p (%s:%u): number of apf slices %u greater than max %u
+%s: dart %p (%s:%u): Invalid DART instance (%u) for APF instance (%u)
+%s: dart %p (%s:%u): apf instance %u 'reg' not page sized
+%s: dart %p (%s:%u): mis-aligned APF register base %#llx
+allow-dram-apf-slices-%d
+%s: dart %p (%s:%u): malformed allow-dram-apf-slices-%d
+%s: dart %p (%s:%u): allow-dram-apf-slices-%d must have at least one slice
+%s: dart %p (%s:%u): allow-dram-apf-slices-%d[%zu] = %u can not index dapf-instance-%d length %u
+%s: dart %p (%s:%u): end(%#llx) < start(%#llx) for slice %d instance %u
+%s: dart %p (%s:%u): APF slice %u instance %u is in managed DRAM: [%#llx, %#llx]
+%s: dart %p (%s:%u): APF slice %u instance %u can not have both dual-vc-llt-workaround and alllow-dram-apf-slices properties
+%s: dart %p (%s:%u): Invalid limits for APF slice %u instance %u: [%#llx,%#llx]
+%s: dart %p (%s:%u): APF slice %d instance %u has DRAM permissions and is not in DRAM: [%#llx,%#llx]
+%s: dart %p (%s:%u): %s clock protection configuration
+t8110dart_bootstrap_gapf_instance_properties
+Inconsistent
+dart-ungang-shared-ps
+clock-protection-slice-index
+%s: dart %p (%s:%u): GAPF instance %u 'reg' not page sized
+%s: dart %p (%s:%u): mis-aligned GAPF register base %#llx
+%s: dart %p (%s:%u): Invalid GAPF_CFG: %#x
+%s: dart %p (%s:%u): Invalid GAPF_LOCK: %#x
+%s: dart %p (%s:%u): Invalid '%s': %#x
+%s: dart %p (%s:%u): Invalid '%s': %#x max %x
+GAPF slice ctrl
+%s: dart %p (%s:%u): Invalid slice address range: %#x..%x
+%s: dart %p (%s:%u): '%s' property not permitted
+piogw-ps-protection
+%s: dart %p (%s:%u): Invalid 'piogw_ps_protection' size (%d)
+t8110dart_bootstrap_piogw_instance_properties
+%s: dart %p (%s:%u): Invalid PIOGW slice (%d) or address (%#llx)
+clock-protection-wr-dis-id
+t8110dart_bootstrap_ps_wr_dis_instance_properties
+clock-protection-dart-state
+validate_t8110dart_dart_id
+t8110dart_validation.h
+validate_t8110dart_sid
+state->dart_id
+validate_t8110dart_dva
+validate_t8110dart_target_level
+t8110dart_update_ttbr
+%s: dart %p (%s:%u): (DART instance %u): Locked register update: 0x%08x -> 0x%08x
+%s: dart %p (%s:%u): (DART instance %u): Failed to write TTBR for SID %d
+%s: dart %p (%s:%u): DART instance %u: SID_CONFIG[%u] 0x%08x does not match shadow 0x%08x
+t8110dart_verify_sid_config
+%s: dart %p (%s:%u): (DART instance %u): Inconsistent write disable set and lock 0x%08x
+t8110dart_dart_regs_are_locked
+t8110dart_invalidate_tlb
+t8110dart_invalidate_tlb_by_dva
+%s: dart %p (%s:%u): Invalid flush-by-DVA range [%#x,%#x]
+t8110dart_invalidate_tlb_by_sid
+validate_t8110dart_map_options
+validate_t8110dart_map_nbytes
+t8110dart_walk_tables
+%s: dart %p (%s:%u): table_pa==0
+%s: dart %p (%s:%u): table==0
+validate_t8110dart_unmap_options
+t8110dart_init_instance
+%s: dart %p (%s:%u): DART instance %u: Unsupported hardware version %u.%u
+%s: dart %p (%s:%u): DART instance %u: hardware version mismatch %u.%u
+%s: dart %p (%s:%u): DART instance %u: max_pa %#llx doesn't match with the rest %#llx
+%s: dart %p (%s:%u): DART instance %u: Incorrect max_pa %#llx
+%s: dart %p (%s:%u): flush-by-dva not supported
+%s: dart %p (%s:%u): Non-compliant dead page mapping not supported
+%s: dart %p (%s:%u): DART instance %u: Inconsistent hardware definition: min_page %#x hw %#x
+%s: dart %p (%s:%u): DART instance %u: Max SID is %u
+%s: dart %p (%s:%u): DART instance %u: Invalid VM page limits [%#x,%#x)
+%s: dart %p (%s:%u): DART instance %u: invalid SID %u
+%s: dart %p (%s:%u): DART instance %u: invalid SID %u full bypass addr %#llx
+%s: dart %p (%s:%u): DART instance %d: invalid SID %u legacy bypass addr 0x%llx
+%s: dart %p (%s:%u): DART instance %u: SID %u translation disabled
+%s: dart %p (%s:%u): DART instance %u: SID %u page limits not set [%#x..%#x)
+%s: dart %p (%s:%u): DART instance %u: SID %u page limits [%#x..%#x) outside required limits [%#x..%#x)
+%s: dart %p (%s:%u): DART instance %u: 4-level translation not supported for SID %u
+%s: dart %p (%s:%u): DART instance %u uses dual-vc-llt-workaround, but has no APF
+%s: dart %p (%s:%u): DART instance %u: Too many APF slices, max %u configured %u
+%s: dart %p (%s:%u): DART instance %u: Invalid APF slice %u range [%#llx,%#llx]
+%s: dart %p (%s:%u): DART instance %u: APF slice %u uses invalid SID %u
+%s: dart %p (%s:%u): DART instance %u: DART not locked
+t8110dart_verify_sid_preconfiguration
+%s: dart %p (%s:%u): DART instance %u: Unconfigured SID %u differs from reset value: 0x%08x
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent remap_enable configuration: actual %#x expected %#x
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent remap configuration: actual %#x expected %#x
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent remap ttbr configuration: actual %#llx expected %#x
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent translation_enable configuration: actual %#x expected %#x
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent ttbr configuration: actual %#llx expected %#llx
+%s: dart %p (%s:%u): DART instance %u: SID %u unexpected ttbr valid with bypass: actual ttbr %#llx expected %#llx
+%s: dart %p (%s:%u): DART instance %u: SID %u unexpected non-zero TTBR for full bypass %#llx
+%s: dart %p (%s:%u): DART instance %u: SID %u unexpected zero TTBR for legacy bypass %#llx
+%s: dart %p (%s:%u): DART instance %u: SID %u inconsistent APF bypass configuration: actual %#x expected %#x
+t8110dart_verify_bypass
+%s: dart %p (%s:%u): DART instance %u SID %u invalid translation setting
+%s: dart %p (%s:%u): DART instance %u: APF not locked
+t8110dart_verify_dapf_preconfiguration
+t8110dart_read_piogw_reg
+%s: dart %p (%s:%u): Invalid PIOGW instance %u
+state->piogws[instance].register_base
+t8110dart_write_piogw_reg
+%s: dart %p (%s:%u): Client partitions not supported
+t8110dart_powerup_instance
+%s: dart %p (%s:%u): DART instance %u: Locked register update SID_CONFIG[%u] 0x%08x->0x%08x
+%s: dart %p (%s:%u): DART instance %u: TTBR must be invalid for remapped SID(%u)
+%s: dart %p (%s:%u): DART instance %u: Locked register update TTBR[%u] 0x%08x->0x%08x
+%s: dart %p (%s:%u): Inconsistent clock protection configuration
+sptm_t8110dart_enable_clock_protection
+%s: dart %p (%s:%u): Inconsistent %s GAPF filter slice control: %#x
+%s: dart %p (%s:%u): Inconsistent power %s GAPF slice_ctrl: %#x
+t8110dart_ps_wr_dis_increment_refcount
+(&ps_wr_dis_lock)
+dart_ps_wr_dis_map
+%s: dart %s:%s:%d: Invalid ps wr_dis id
+%s: dart %s:%s:%d: ps refcount overflow
+t8110dart_set_ps_wr_dis
+%s: dart %s:%s:%d: Failed to set WR_DIS bit
+%s: dart %s:%s:%d: Failed to clear WR_DIS bit
+sptm_t8110dart_skip_enable_clock_protection_write
+%s: dart %p (%s:%u): Inconsistent unganged clock protection counter
+%s: dart %p (%s:%u): instance %u WRITE_DISABLE_LOCK unlocked expected 0x%08x actual 0x%08x
+t8110dart_verify_tz_tagger
+%s: dart %p (%s:%u): instance %u WRITE_DISABLE enabled expected 0x%08x actual 0x%08x
+%s: dart %p (%s:%u): instance %u %s changed expected 0x%08x actual 0x%08x
+(TZ_REGION0_START)
+(TZ_REGION0_END)
+(TZ_REGION0_OFFSET)
+(TZ_REGION1_START)
+(TZ_REGION1_END)
+(TZ_REGION1_OFFSET)
+(TZ_REGION2_START)
+(TZ_REGION2_END)
+(TZ_REGION2_OFFSET)
+%s: dart %p (%s:%u): TZ Dead Page is not supported for hw version: %#hx
+%s: dart %p (%s:%u): TZ Dead Page must be zero with build_params2.trustzone_tagger_supported
+sptm_t8110dart_disable_clock_protection
+t8110dart_ps_wr_dis_decrement_refcount
+%s: dart %s:%s:%d: ps refcount underflow
+validate_t8110dart_dart_instance
+validate_t8110dart_tlb_op_index
+validate_t8110dart_smmu_instance
+validate_t8110dart_smmu_window
+validate_t8110dart_smmu_stt_index
+t8110dart_poll
+%s: dart %p (%s:%u): Invalid poller type %d
+%s: dart %p (%s:%u): Invalid poller type: %u
+%s: dart %p (%s:%u): DART instance %u: %s still busy after %zu polls, OP=%#x
+validate_t8110dart_err_mask
+%s: dart %p (%s:%u): Flush Unlock not supported
+t8110dart_tlb_flush_unlock
+t8110dart_clear_all_interrupts_instance
+t8110dart_enable_translation
+%s: dart %p (%s:%u): DART instance %u: TTBR[%u] 0x%08x does not match shadow 0x%08x
+t8110dart_verify_sid_shadow_config
+%s: Nonrecoverable PIO error detected: vaddr: %p, value: 0x%016llx_%016llx, llc_err_sts:0x%llx, llc_err_adr:0x%llx, llc_err_inf:0x%llx
+pio_write_verify_llc_err_inf_nrec
+validate_t8110dart_tlb_op
+validate_t8110dart_poller
+%s: dart %p (%s:%u): Not serialized request from %s
+t8110dart_tlbi_request
+%s: dart %p (%s:%u): Unsupported TLB operation %#x
+t8110dart_tlbi_start
+SPTM_UNTYPED
+SPTM_DEFAULT
+SPTM_TXM_CODE
+SPTM_XNU_CODE
+SPTM_XNU_CODE_DBG_RW
+SPTM_KERNEL_ROOT_TABLE
+SPTM_PAGE_TABLE
+SPTM_IOMMU_BOOTSTRAP
+XNU_RO_DBG_RW
+XNU_USER_EXEC
+XNU_USER_DEBUG
+XNU_USER_JIT
+XNU_USER_TPRO
+XNU_USER_ROOT_TABLE
+XNU_SHARED_ROOT_TABLE
+XNU_PAGE_TABLE
+XNU_PAGE_TABLE_SHARED
+XNU_PAGE_TABLE_ROZONE
+XNU_PAGE_TABLE_COMMPAGE
+XNU_PROTECTED_IO
+XNU_COPROCESSOR_RO_IO
+XNU_COMMPAGE_RW
+XNU_COMMPAGE_RO
+XNU_COMMPAGE_RX
+XNU_TAG_STORAGE
+XNU_STAGE2_ROOT_TABLE
+XNU_STAGE2_PAGE_TABLE
+XNU_KERNEL_RESTRICTED
+XNU_CPUTRACE_PA_BUFFER
+XNU_CPUTRACE_VA_BUFFER
+XNU_RESTRICTED_IO
+XNU_RESTRICTED_IO_TELEMETRY
+XNU_SUBPAGE_USER_ROOT_TABLES
+TXM_CPU_STACK
+TXM_THREAD_STACK
+TXM_ADDRESS_SPACE_TABLE
+TXM_MALLOC_PAGE
+TXM_FREE_LIST
+TXM_SLAB_TRUST_CACHE
+TXM_SLAB_PROFILE
+TXM_SLAB_CODE_SIGNATURE
+TXM_SLAB_CODE_REGION
+TXM_SLAB_ADDRESS_SPACE
+TXM_BUCKET_1024
+TXM_BUCKET_2048
+TXM_BUCKET_4096
+TXM_BUCKET_8192
+TXM_BULK_DATA
+TXM_BULK_DATA_READ_ONLY
+TXM_SEP_SECURE_CHANNEL
+SK_SHARED_RO
+SK_SHARED_RW
+%s: %u is not a valid type ID (valid type IDs are 0 - %u)
+type_id_to_string
+%s: Invalid element_size/num_elements %zd %lld
+copy_array_to_scratch
+array_fte->type
+array_fte->in_flight_ops
+element_size
+num_elements
+%s: Offset into scratch page crosses page boundary %zu %zu
+VIOLATION_INVALID_PT
+VIOLATION_INVALID_LEVEL
+VIOLATION_INVALID_GEOMETRY_ID
+VIOLATION_INVALID_IOMMU_ID
+VIOLATION_INVALID_ASID
+VIOLATION_INVALID_VMID
+VIOLATION_INVALID_PADDR
+VIOLATION_INVALID_VADDR
+VIOLATION_INVALID_VADDR_RANGE
+VIOLATION_INVALID_TYPE
+VIOLATION_INVALID_N_OPS
+VIOLATION_INVALID_ARRAY
+VIOLATION_INVALID_SHARED_RT
+VIOLATION_INVALID_USER_RT
+VIOLATION_INVALID_OPTIONS
+VIOLATION_INVALID_INSTANCE_ID
+VIOLATION_INVALID_FLAG
+VIOLATION_INVALID_CPU_PHYSICAL_ID
+VIOLATION_INVALID_SIZE
+VIOLATION_INVALID_TAG_STORAGE_FRAME
+VIOLATION_INVALID_PAPT_RANGE
+VIOLATION_INVALID_IO_FILTER_ENTRY
+VIOLATION_ILLEGAL_CPU_REGISTRATION
+VIOLATION_ILLEGAL_RETYPE
+VIOLATION_ILLEGAL_RETYPE_PINNED
+VIOLATION_ILLEGAL_MAP
+VIOLATION_ILLEGAL_NEST
+VIOLATION_ILLEGAL_UNNEST
+VIOLATION_ILLEGAL_UPDATE
+VIOLATION_ILLEGAL_UNMAP
+VIOLATION_ILLEGAL_UNMAP_PINNED
+VIOLATION_ILLEGAL_UPGRADE
+VIOLATION_ILLEGAL_DOWNGRADE
+VIOLATION_ILLEGAL_UNCONDEMN
+VIOLATION_ILLEGAL_PTE
+VIOLATION_ILLEGAL_TTE
+VIOLATION_ILLEGAL_PERMS
+VIOLATION_ILLEGAL_NG_FIELD
+VIOLATION_ILLEGAL_PTE_WRITABLE
+VIOLATION_ILLEGAL_SPANS_TABLES
+VIOLATION_ILLEGAL_MAPPING_TYPE
+VIOLATION_ILLEGAL_DISPATCH_DOMAIN
+VIOLATION_ILLEGAL_DISPATCH_TABLE
+VIOLATION_ILLEGAL_DISPATCH_PERMISSION
+VIOLATION_ILLEGAL_DISPATCH_ENTRY_POINT
+VIOLATION_ILLEGAL_DISPATCH_TXM_STACK
+VIOLATION_ILLEGAL_SPTM_ENDPOINT
+VIOLATION_ILLEGAL_SPTM_DISPATCH_TABLE
+VIOLATION_ILLEGAL_SPTM_EXC_RETURN
+VIOLATION_SIGN_ILLEGAL_KEY
+VIOLATION_AUTH_ILLEGAL_KEY
+VIOLATION_ILLEGAL_SLIDE
+VIOLATION_ILLEGAL_TAG_FRAME
+VIOLATION_ILLEGAL_UNTAG_FRAME
+VIOLATION_ILLEGAL_TAGGED_MAPPING
+VIOLATION_DANGLING_PAPT_TAG
+VIOLATION_ILLEGAL_IOMMU_UNREGISTER
+VIOLATION_ILLEGAL_IO_RANGE_SIZE
+VIOLATION_DOUBLE_NEST
+VIOLATION_MISMATCHED_PT_GEOMETRIES
+VIOLATION_FRAME_HELD_EXCLUSIVE
+VIOLATION_FRAME_HELD_SHARED
+VIOLATION_FRAME_HELD_SHARED_MULTIPLE
+VIOLATION_FRAME_OWNER
+VIOLATION_FRAME_PROTECTED
+VIOLATION_FRAME_TYPE
+VIOLATION_OVERFLOW_RO_REFCNT
+VIOLATION_OVERFLOW_WX_REFCNT
+VIOLATION_OVERFLOW_NESTED_REFCNT
+VIOLATION_OVERFLOW_USER_REFCNT
+VIOLATION_SHARED_REGIONS_EXHAUSTED
+VIOLATION_SHARED_REGIONS_ALREADY_CONFIGURED
+VIOLATION_SHARED_REGIONS_MISMATCH
+VIOLATION_SHARED_REGIONS_NOT_CONFIGURED
+VIOLATION_ASID_IN_USE
+VIOLATION_VMID_IN_USE
+VIOLATION_POSSIBLE_PENDING_TLBI
+VIOLATION_TABLE_NOT_EMPTY
+VIOLATION_ILLEGAL_COMMPAGE_VADDR
+VIOLATION_REG_ID_INVALID
+VIOLATION_REG_DENIED_BITS
+VIOLATION_POSSIBLE_PENDING_CACHE_FLUSH
+VIOLATION_INCONSISTENT_PAGING_HIERARCHY
+VIOLATION_GUEST_ENTER_INTERRUPTS_ENABLED
+VIOLATION_GUEST_INVALID_S1_TLB_OP
+VIOLATION_GUEST_ILLEGAL_NV2_BADDR
+VIOLATION_ILLEGAL_HIBERNATION_CALL
+VIOLATION_ILLEGAL_HIBERNATION_STATE
+VIOLATION_ILLEGAL_HIBERNATION_IO_BUFFER
+VIOLATION_ILLEGAL_HIBERNATION_PAGE
+VIOLATION_HIB_MISSING_REQUIRED_MANAGED_PAGE
+VIOLATION_HIB_MISSING_REQUIRED_UNMANAGED_PAGE
+VIOLATION_ILLEGAL_VIRTUALIZATION_CALL
+VIOLATION_ILLEGAL_SPTM_REENTRY_CALL
+VIOLATION_INVALID_IOFILTER_WRITE_SIZE
+VIOLATION_UNALIGNED_IOFILTER_WRITE_PADDR_AND_SIZE
+VIOLATION_OOB_MULTIPAGE_OPS
+VIOLATION_ILLEGAL_SPTM_SYSCTL_SELECTOR
+VIOLATION_ILLEGAL_SPTM_SYSCTL_OP
+VIOLATION_INVALID_PINNING_POLICY
+VIOLATION_ILLEGAL_PINNING_OPERATION
+VIOLATION_ILLEGAL_SUBPAGE_USER_ROOT_TABLE_INDEX
+VIOLATION_INVALID_SUBPAGE_USER_ROOT_TABLE_FRAME
+VIOLATION_ILLEGAL_SUBPAGE_USER_ROOT_TABLE_ALLOC
+VIOLATION_ILLEGAL_SUBPAGE_USER_ROOT_TABLE_FREE
+VIOLATION_OPERATING_ON_FREE_SUBPAGE_USER_ROOT_TABLE
+VIOLATION_ILLEGAL_SPTM_CALL_IN_PANIC
+VIOLATION_INVALID_IO_PADDR
+VIOLATION_INVALID_DT_RANGE
+VIOLATION_INVALID_RESTRICTED_IO_PADDR
+%s: failed to get DT
+sptm_parse_io_ranges
+sptm_parse_io_filters
+sptm_iofilter_protected_write
+%s: paddr out of range of the specified pmap-io-filters
+sptm_init_parse_io_space
+%s: DeviceTree PAPT range not found.
+%s: Error while reading property %s
+%s: /defaults node doesn't exist in DT
+sptm_compute_io_ranges
+%s: Total size of pmap-io-ranges (%u) is not a multiple of pmap_io_range_t size (%zu)
+%s: pmap-io-range %u has an address (0x%llx) that is not page-aligned. sig: %c%c%c%c, len: 0x%llx, wimg: 0x%x
+%s: pmap-io-range %u has a length (0x%llx) that is not page-aligned. sig: %c%c%c%c, addr: 0x%llx, wimg: 0x%x
+%s: pmap-io-range %u wraps around. sig: %c%c%c%c, addr: 0x%llx, len: 0x%llx, wimg: 0x%x
+%s: pmap-io-range %u overlaps with managed physical memory. sig: %c%c%c%c, addr: 0x%llx, len: 0x%llx, wimg: 0x%x
+%s: Failed to get defaults node from EDT
+sptm_load_io_ranges
+%s: Failed to get pmap-io-ranges property from the defaults node
+%s: %p length is greater than %u pages (%llu)
+sptm_register_io_frame
+%s: Number of IO ranges exhausted
+%s: Attempted to register managed page as an IO range %p %u
+%s: Attempted to register an empty IO range %p %u
+%s: Attempted to register unaligned IO range %p %u
+%s: Attempted to register a IO range %p %u with invalid type %u
+%s: sptm_pmap_io_ranges %u (addr: %#llx len: %#llx) and %u (addr: %#llx len: %#llx) overlap.
+sptm_validate_io_ranges
+sptm_compute_io_filters
+pmap-io-filters
+%s: io filter entry %u offset 0x%hx length 0x%hx crosses page boundary
+%s: failed to get the /defaults node from EDT
+sptm_load_io_filters
+%s: failed to get the pmap-io-filters property
+%s: io filter entry %u and %u overlap.
+sptm_validate_io_filters
+validate_sptm_io_filter_protected_write_size
+sptm_io_filter_protected_write_size
+validate_sptm_io_filter_protected_paddr
+sptm_io_filter_protected_paddr
+sptm_find_io_filter_entry
+io_range->len
+-internal-reg
+sptm_init_register_allow_io_range
+%s: Found non-page table frame during a page table walk
+sptm_page_tables.c
+%s: paddr isn't managed %#llx
+papt_update_mapping
+%s: invalid flag found while updating PAPT mapping %u
+%s: Attempted to update PAPT permissions outside of a retype() operation, this is unsafe.
+%s: invalid cache attribute index found while updating PAPT mapping %p %hhuu %hhu
+%s: expected %#llx <= npages <= %#llx but got npages=%#llx
+generate_rtlbi_param
+%s: invalid root table type %hhu for PA 0x%llx
+sptm_broadcast_tlbi
+%s: VA 0x%llx not aligned to root table page size
+%s: unsupported full TLBI flavor 0x%x
+%s: unsupported RTLBI flavor 0x%x
+%s: unsupported TLBI flavor 0x%x
+sptm_bootstrap_tlbi
+%s: Attempted to announce bootstrap stage that has already been reached %p %p
+bootstrap_stage_announce
+%s: Expected bootstrap stages not reached. Expected: %p, Actual: %p
+bootstrap_stage_enforce_after
+%s: Unexpected bootstrap stages reached. Expected: %p, Actual: %p
+bootstrap_stage_enforce_before
+%s: Exceeded available number of bootstrap SPTM CTRR-protected frames, dram_size=%#llx
+bootstrap_alloc_frames
+%s: Exceeded available number of xnu CTRR-protected frames, dram_size=%#llx
+%s: Called with [num_frames] of zero
+bootstrap_retype_frames
+%s: Attempted to retype a non-managed frame %p %u
+%s: Range overflow while attempting to retype frames %p %u
+%s: Invalid new type %u
+%s: wrong frame type for SPTM CTRR protected page tables: %d
+bootstrap_expand_page_tables
+%s: wrong frame type for page tables: %d
+%s: PAPT PTE could not be reached %p
+bootstrap_map_region
+%s: Valid PTE found while attempting to create mapping %p
+bootstrap_unmap_page
+%s: Invalid PTE found while attempting to unmap page %p
+bootstrap_map_io_region
+%s: request for %u mappings exceeds %u late I/O limit (current: %u), max needed %u, dram_size=%#llx
+%s: Attempted to unmap non-existent IO region %p %u
+bootstrap_unmap_io_region
+%s: Name is NULL
+bootstrap_register_papt_range
+%s: (range %s): Required PAPT range has no mappings.
+%s: (range %s): Invalid bootstrap type %u
+%s: (range %s): Attempted to go over the maximum number of PAPT ranges
+%s: (range %s): PAPT_RANGE_ALLOCATE_BACKWARD cannot coexist with other flags
+bootstrap_retype_papt_range
+%s: Unable to find requested range %s
+%s: %s PAPT range not found.
+papt_range_find
+%s: () No PAPT ranges have been registered
+papt_ranges_update
+certificate-production-status
+%s: failed to determine if device is prod-fused
+device_is_prod_fused_init
+%s: () invalid virt_base: %llx
+sptm_bootstrap_early
+%s: () invalid phys_base: %llx
+%s: () invalid first_avail_phys: %llx
+%s: () invalid mem_size: %zx
+%s: () page count overflows 32 bits: %zx
+%s: Error looking up /chosen
+%s: Error looking up /chosen/dram-base
+%s: dram-base (%p) size mismatch (%d) or NULL
+%s: Error looking up /chosen/dram-size
+%s: dram-size (%p) size mismatch (%d) or NULL
+%s: sptm_first_dram is not page-aligned
+%s: sptm_last_dram is not page-aligned
+%s: PAPT range is in multiple SPTM domains
+%s: [current_contiguous] set on the first PAPT range
+%s: Two or more PAPT ranges overlap in VA space %s
+%s: xnu ro pagetable page #%d is not SPTM owned, but %x
+%s: Could not find /arm-io
+mapping-enforcement-mode
+sptm_bootstrap_late
+%s: IO Ranges %u and %u overlap
+%s: NULL device tree
+%s: Error looking up /defaults
+pmap-max-asids
+%s: pmap-max-asids DT property is not a 32-bit integer
+%s: pmap-max-asids DT property is greater than 1 << 16
+%s: pmap-max-asids DT property is zero
+%s: Frame has been left untyped during bootstrap %p
+sptm_bootstrap_finalize
+%s: papt_to_phys(0) encountered.
+papt_to_phys
+%s: %s: No leaf table present for PAPT va %p
+%s: No valid PAPT mapping found while traversing the page tables
+%s: Trying to run on more CPUs than MAX_CPUS %d >= %d
+sptm_cpu_init
+%s: Re-initializing already started CPU %d
+%s: non-canonical or unaligned output address %#llx
+cpu_temp_aperture_map
+cpu_temp_aperture_unmap
+%s: Error looking up /cpus
+sptm_parse_cpu_ranges
+%s: Error initializing DT iterator
+%s: Error obtaining CPU node
+cpu-impl-reg
+%s: Error looking up `cpu-impl-reg` region
+%s: DT property has illegal size %zu
+acc-impl-reg
+%s: Error looking up `acc-impl-reg` region
+cpm-impl-reg
+%s: Error looking up `cpm-impl-reg` region
+%s: Error looking up /product
+bootstrap_determine_virtualization_support
+has-virtualization
+%s: Type %d is not a CPU root table.
+cpu_root_table_fte_to_paddr
+%s: PA %p is not associated with a Subpage User Root Tables typed frame.
+%s: Frame %p not acquired, in_flight_ops: %hu
+%s: Type %d is not a CPU root table or XNU_SUBPAGE_USER_ROOT_TABLES.
+cpu_root_table_paddr_to_fte
+frame_acquire
+sptm_types.c
+fte->in_flight_ops
+frame_release
+%s: NULL ptep pointer
+table_acquire_if_present
+pt_fte->type
+pt_fte->in_flight_ops
+%s: Non-PT frame found in page tables %p
+%s: XNU_PAGE_TABLE frame found while walking Shared Region page tables %p
+%s: Incorrect level set in page table FTE
+table_release
+%s: FTE type is not of a CPU page table
+refcounts_update_table_op
+refcounts_update_page_op
+%s: NULL FTE with at least one valid PTE (%#llx or %#llx)
+%s: Attempted to update refcnts on a non-cpu-page: %s
+old_wx_refcnt
+old_ro_refcnt
+%s: Parent table FTE has not been acquired %p %u %d
+sptm_drop_table_refcnts
+%s: Child table FTE has not been acquired %p %u %d
+shared_region_alloc
+%s: Shared region ID does not exist %d
+shared_region_free
+shared_region_configure
+expected_shared_region_state
+%s: Unexpected failure while attempting to configure a shared region
+is_page_pinned
+%s: Frame expected to have been acquired shared has not been acquired shared %p %u %d
+set_page_pinned_state
+cpu_root_table_user_address_space_set_up
+cpu_root_table_user_address_space_tear_down
+mapping_refcnt
+%s: ASID 0x%hx was already clear in sptm_asid_bitmap
+cpt_mapcnt_dec
+rc16_try_dec_from
+cpu_root_table_retype_in
+%s: Unexpected [new_type] while retyping page: %s
+validate_vmid
+cpu_root_table_retype_out
+%s: VMID 0x%hx was already clear in sptm_vmid_bitmap
+%s: Unexpected [fte->type] while retyping page: %s
+xnu_subpage_user_root_tables_retype_out
+validate_iommu_id
+xnu_iommu_retype_out
+fte_tsd->iommu_id
+iommu_refcnt
+%s: Type %u is not available on this system
+xnu_tag_storage_retype_in
+xnu_tag_storage_retype_out
+validate_pt_level
+cpu_page_table_retype_out
+nested_refcnt
+xnu_generic_retype_out
+write_exec_refcnt
+%s: Unexpected write/exec refcount found while retyping an XNU_ROZONE frame (fte = %p)
+xnu_rozone_retype_out
+xnu_exec_retype_out
+sk_types_retype_out
+%s: Invalid permission specified.
+sapt_set_permissions
+%s: SAPT not bootstrapped.
+sapt_update_permissions_uat_map
+sapt_update_permissions_uat_unmap
+sapt_synchronize_permissions_update
+sapt_update_permissions_uat_unmap_sync
+%s: Allowed IOMMU permissions are neither RO nor RW (%d)
+sapt_perm_for_retype_default_allow
+%s: error getting SecureDT
+sapt_bootstrap_uat
+%s: Address 0x%llx not within DRAM
+sapt_paddr_to_pai
+%s: UAT FW alias detected for physical page: %p.
+sapt_uat_map_default_deny
+%s: Frame expected to have been acquired has not been acquired %p %u %d
+retype_paddr_will_be_uat_page_table
+%s: error %d looking up /chosen
+sapt_bootstrap_globals
+/arm-io/sapt
+%s: error %d looking up /arm-io/sapt
+sapt_bootstrap_table
+%s: Calculated SAPT table size doesn't match device tree.
+table-address
+%s: %s: invalid papt returned by iommu_bootstrap_register_io_range
+sapt_bootstrap_policy
+%s: Invalid SAPT policy specified
+%s: UAT global instance should not be null.
+sapt_bootstrap_validate_uat
+%s: TTBAT address should not be null.
+%s: UAT Handoff region should not be null.
+%s: Physical address %#llx is not page-aligned
+is_page_in_sapt_region
+%s: IO PADDR could not be found %p
+io_range_get_papt
+%s: IO PADDR does not have an associated PAPT address %p %d
+%s: invalid bootstrap frames type %d, expected SPTM_IOMMU_BOOTSTRAP (%d) or XNU_CPUTRACE_PA_BUFFER (%d).
+iommu_bootstrap_alloc_frames_type
+%s: IOMMU %s (%d): State objects exhausted
+iommu_bootstrap_alloc_instance
+%s: IOMMU %s (%d): Attempted to register managed page as an IO range %p %zu
+iommu_bootstrap_register_io_range
+%s: IOMMU %s (%d): Attempted to register an empty IO range %p %zu
+%s: IOMMU %s (%d): Attempted to register unaligned IO range %p %zu
+%s: IOMMU %s (%d): %#llx length is greater than 64K pages (%zu)
+%s: IOMMU %s (%d): IO frame does not have a valid type for IO range %p %u
+%s: IOMMU %s (%d): IO frame starting index %llu does not match IO range starting index %u
+%s: IOMMU %s (%d): IO frame number of pages %llu does not match IO range number of pages %u
+%s: IOMMU %s (%d): pmap-io-ranges does not exist for IO range %p %u
+%s: IOMMU %s (%d): cache mode (%u) does not match with pmap-io-ranges (%u) for IO range %p %u
+%s: IOMMU %s (%d): Number of IO ranges exhausted
+iommu_frame_acquire_type
+sptm_iommus.c
+fte->iommu_page.iommu_id
+%s: IOMMU %s (%d): attempted to release unexpected frame %p
+iommu_frame_release
+%s: Tried releasing a frame that should not have been acquired to begin with %d
+%s: IOMMU %s (%d): attempted to increment refcnt of unexpected frame %p
+iommu_page_refcnt_update
+iommu_register_mapping
+current_iommu()
+allowed_permissions
+mapping_type
+%s: IOMMU %s (%d): attempted to unregister illegal mapping
+iommu_unregister_mapping
+%s: IOMMU %s (%d): attempted to request cache flush for non-generic frame %p %u
+iommu_mark_coprocessor_cache_flush_needed
+%s: Only CPUTrace is allowed to call %s() with type %d - %d/%d
+iommu_set_page_pinned_state
+%s: Unable to get root device tree node.
+sptm_iommu_reg_base
+%s: Could not find /arm-io device tree node!
+%s: Overflow while calculating register end address (0x%llx + 0x%llx)
+#address-cells
+%s: Unable to get expected value for #address-cells property from the root device tree node: prop_value = 0x%llx *prop_value = 0x%x.
+%s: Unable to get expected value for #size-cells property from the root device tree node.
+%s: Invalid ranges property found.
+%s: Overflow while calculating parent range  end address (0x%llx + 0x%llx)
+%s: Overflow while calculating translated address (0x%llx + 0x%llx)
+%s: Unable to locate matching range for register range [0x%llx, 0x%llx]
+%s: IOMMU with id %d not supported
+enforce_iommu_id_valid
+io_range_tsd
+io_range_tsd_const
+%s: Unexpected Dispatch ID %llu
+current_iommu
+iommu_page_tsd
+iommu_validate_instance
+next_instance_idx
+%s: Frame expected to have been acquired has not been acquired %p %u %d %d
+iommu_assert_frame_in_flight
+iommu_refcnt_add
+iommu_refcnt_sub
+hib_validate_io_buffer_page
+%s: IOMMU %s (%d): Unexpected frame found while attempting to modify refcnt %p %u
+iommu_update_page_refcount
+%s: IOMMU %s (%d): Non-refcounted frame found while attempting to modify refcnt %p %u
+%s: IOMMU "%s" does not provide an XNU-facing dispatch table
+iommu_init_driver
+%s: IOMMU "%s" bootstrap failure
+dispatch_table_lookup
+caller_domain
+table_permissions
+dispatch_target
+%s: [SPTM Dispatch] Found illegal dispatch entry point. caller_domain: %d, entry_point: %#llx, dispatch_target: %#llx
+%s: invalid state: %s
+dispatch_state_machine
+%s: invalid event type: %s
+%s: invalid next state: %s
+%s: invalid state transition - no action set for the transition. current_state: %s, event_type: %s, event_metadata: %#llx
+cpu_data->logical_id
+event_metadata
+state_to_string(st)
+state_to_string(next_state)
+%s: Invalid hop detected when transitioning XNU->TXM %llu
+phys_to_type(txm_stack)
+sptm_register_dispatch_table
+sanitize_integer(dispatch_entry_addr_U.UNSAFE_VALUE)
+entry->dispatch_entry_point
+sptm_register_xnu_exc_return
+xnu_exc_return_handler
+register_sptm_iommu_dispatch_table
+%s: tried registering the same dispatch table twice %d
+genter_dispatch_entry
+"dispatch.c"
+sptm_dispatch
+sanitize_integer(dispatch_target_U.UNSAFE_VALUE)
+%s: vector_type not valid
+handle_exception_action
+%s: xnu_el2_exception_vector not set
+%s: xnu_exc_return_handler not registered
+%s: [%s] %s at pc 0x%016llx, lr 0x%016llx
+  x0:  0x%016llx x1:  0x%016llx  x2:  0x%016llx  x3:  0x%016llx
+  x4:  0x%016llx x5:  0x%016llx  x6:  0x%016llx  x7:  0x%016llx
+  x8:  0x%016llx x9:  0x%016llx  x10: 0x%016llx  x11: 0x%016llx
+  x12: 0x%016llx x13: 0x%016llx  x14: 0x%016llx  x15: 0x%016llx
+  x16: 0x%016llx x17: 0x%016llx  x18: 0x%016llx  x19: 0x%016llx
+  x20: 0x%016llx x21: 0x%016llx  x22: 0x%016llx  x23: 0x%016llx
+  x24: 0x%016llx x25: 0x%016llx  x26: 0x%016llx  x27: 0x%016llx
+  x28: 0x%016llx fp:  0x%016llx  lr:  0x%016llx  sp:  0x%016llx
+  pc:  0x%016llx cpsr: 0x%08x         esr: 0x%016llx          far: 0x%016llx
+panic_with_register_state
+%s: [SPTM Dispatch] Invalid GENTER immediate value %u in genter_system_is_panicking (current CPU: %u, panicking CPU: %u).
+nested_panic_bad_genter_immediate
+%s: Synchronous external abort in early boot before XNU bootstrap. LLC_ERR_STS: %#llx, LLC_ERR_ADR: %#llx, LLC_ERR_INF: %#llx
+sptm_early_platform_error
+validate_dispatch_target
+%s: %u is not a valid dispatch state (valid dispatch states are 0 - %u)
+state_to_string
+STATE_SPTM_BOOTSTRAP
+STATE_SK_BOOTSTRAP
+STATE_TXM_BOOTSTRAP
+STATE_SPTM_CALLED_BY_TXM_BOOTSTRAP
+STATE_SPTM_CALLED_BY_SK_BOOTSTRAP
+STATE_XNU_GUEST
+STATE_XNU_HIB
+STATE_TXM_CALLED_BY_XNU
+STATE_TXM_SAVE_CONTEXT
+STATE_TXM_CALLED_BY_SPTM
+STATE_SPTM_CALLED_BY_XNU
+STATE_SPTM_CALLED_BY_XNU_HIB
+STATE_XNU_HANDLE_SPTM_EXCEPTION
+STATE_SPTM_CALLED_BY_TXM
+STATE_SPTM_CALLED_BY_SK
+STATE_SK_CALLED_BY_XNU
+STATE_SK_CALLED_BY_SPTM_HIB
+STATE_SK_EXCEPTION
+STATE_XNU_PANIC
+STATE_PANIC_SPTM_CALLED_BY_XNU
+STATE_DISPATCH_PANIC_SPIN
+STATE_SPTM_REENTERED_BY_XNU
+%s: %u is not a valid dispatch event type (valid dispatch event types are 0 - %u)
+event_type_to_string
+EVENT_BOOTSTRAP_TXM
+EVENT_BOOTSTRAP_SK
+EVENT_CALL_SPTM
+EVENT_CALL_TXM
+EVENT_CALL_SK
+EVENT_RETURN
+EVENT_EXCEPTION
+EVENT_CONTEXT_SAVED
+EVENT_RESUME_SPTM
+EVENT_RESUME_TO_PANIC_CALL
+EVENT_PANIC_SPIN
+EVENT_ENTER_GUEST
+EVENT_EXIT_GUEST
+EVENT_CALL_SPTM_HIB
+validate_sptm_dispatch_table_id
+%s: Caller domain exceeds array dimensions %d
+validate_dispatch_entry_addr
+validate_dispatch_endpoint_id
+DISPATCH_ID_SPTM_CORE
+%s: %llu is not a valid dispatch id (valid dispatch IDs are 0 - %u)
+dispatch_id_to_string
+IOMMU_ID_SHART
+IOMMU_ID_SART
+IOMMU_ID_NVME
+IOMMU_ID_UAT
+IOMMU_ID_DART_T8020
+IOMMU_ID_DART_T8110
+IOMMU_ID_DART_T6000
+IOMMU_ID_CPUTRACE
+IOMMU_ID_DART_GEN3
+/Library/Caches/com.apple.xbs/1317EC95-92D1-4B00-913F-43F0A5A6B281/TemporaryDirectory.NReMzg/Sources/SPTM/sptm/boot/hib/hibernate_restore.c
+header->image1Size > (uintptr_t)page_list_end_paddr - (uintptr_t)header_paddr
+Invalid image1 size
+bitmap_page_is_valid(first_free_paddr, header, &temp_dt)
+managed_phys_start != 0
+managed_phys_end != 0
+IS_BIT_SET(header->kernelSlide, 63)
+header->handoffPageCount < HIB_HANDOFF_PAGECOUNT_LIMIT
+arg.limit_upper > arg.limit_lower
+memcmp(hib_header_copy->imageHeaderHMAC, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->handoffHMAC, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->image1PagesHMAC, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->image2PagesHMAC, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->protected_metadata_hmac, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->sptm_rorgn_hmac, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->hib_segs_hmac, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+memcmp(hib_header_copy->xnu_rorgn_hmac, zeroHMAC, HIBERNATE_HMAC_SIZE) != 0
+!sptm_add_overflow(src_paddr, (0), &assert_end_paddr) && assert_end_paddr <= hib_image_end_paddr
+preview_list_paddr != 0
+!sptm_add_overflow(src_paddr, (2 * sizeof(uint32_t)), &assert_end_paddr) && assert_end_paddr <= hib_image_end_paddr
+__probable((dst_raddr >= hib_ctx->restore_slide) && (dst_raddr < hib_ctx->hibtext_slide))
+attempting to restore immutable page
+!sptm_add_overflow(src_paddr, (sizeof(uint32_t)), &assert_end_paddr) && assert_end_paddr <= hib_image_end_paddr
+(tag & kIOHibernateTagSigMask) == kIOHibernateTagSignature
+compressed_size <= SPTM_PAGE_SIZE
+__probable(hib_page_bitmap(hib_ctx->page_list, dst_ppnum) == NULL || !hib_page_bitget(hib_ctx->page_list, dst_ppnum))
+!sptm_add_overflow(src_paddr, (compressed_size), &assert_end_paddr) && assert_end_paddr <= hib_image_end_paddr
+hib_header_copy->protected_metadata.exclave_key_phys != 0
+io_range == NULL || !(io_range->flags & HIB_PHYS_RANGE_FLAG_PROHIBITED)
+ccgcm_finalize(gcm, ctx, sizeof(hib_header_copy->exclave_iv.tag), hib_header_copy->exclave_iv.tag) == 0
+hib_ctx->restore_slide != 0
+hib_ctx->hibtext_slide != 0
+hib_ctx->hibtext_fixup_slide != 0
+ Hibernation Exit Panic: 
+ Assertion failed: 
+hdr_page_list_length >= sizeof(hibernate_page_list_t)
+list->list_size <= hdr_page_list_length
+(end - ptr) >= (sizeof(hibernate_page_list_t))
+(end - ptr) >= (sizeof(hibernate_bitmap_t))
+bank->last_page >= bank->first_page
+bank->first_page > last_page_seen
+bank_page_count > 0
+!sptm_add_overflow(bank_page_count, bitmapword_bits - 1, &roundup)
+bank->bitmapwords == (roundup / bitmapword_bits)
+!sptm_add_overflow(pages_seen, bank_page_count, &pages_seen)
+pages_seen <= list->page_count
+(end - ptr) >= (bank->bitmapwords * sizeof(bank->bitmap[0]))
+pages_seen == list->page_count
+Could not find device tree in handoff region
+(header != NULL) && (list != NULL)
+list != NULL
+(list != NULL) && (next_free_page != NULL)
+!sptm_add_overflow(next_free_in_bank, bitmap_count, &total_count)
+bitmap != NULL
+!sptm_add_overflow(count, zero_count, &total_count)
+!sptm_add_overflow(count, offset, &total_count)
+!sptm_add_overflow(page, count, &total_count)
+!sptm_add_overflow(bitmap->last_page, 1, &total_count)
+!((uint64_t)sptm_hib_unaligned_read_uint32(&range->flags) & (uint64_t)(HIB_PHYS_RANGE_FLAG_PROHIBITED | HIB_PHYS_RANGE_FLAG_DEV_MEM))
+err == kSuccess
+pmap-io-ranges
+upper != NULL
+(addr & SPTM_PAGE_MASK) == 0
+(len >> SPTM_PAGE_SHIFT) <= UINT32_MAX
+!(wimg & (PMAP_IO_RANGE_NOT_IO | PMAP_IO_RANGE_PROHIBIT_HIB_WRITE))
+hib_ctx->num_hib_io_ranges < MAX_HIB_IO_RANGES
+(hib_ctx->page_list != NULL) && (hib_ctx->next_free_page != 0)
+Invalid bitmap page attempted to be allocated
+end_paddr >= start_paddr
+IS_BIT_SET(start_vaddr, 63)
+bank_start <= bank_end
+(bank_start >= data->limit_lower) && (bank_start <= data->limit_upper) && (bank_end <= data->limit_upper)
+io_range != NULL
+io_range->flags & HIB_PHYS_RANGE_FLAG_NEEDS_HIB
+!(io_range->flags & HIB_PHYS_RANGE_FLAG_PROHIBITED)
+hib_ctx != NULL
+(size & SPTM_PAGE_MASK) == 0
+hib_ctx->restore_slide == 0
+root_table_paddr != 0
+IS_PTE_INVALID(table_base[index + i])
+level < LEAF_TABLE_LEVEL
+(entry & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) != (ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK)
+(child_pt_paddr & SPTM_PAGE_MASK) == 0
+chosen/memory-map
+Failed to locate chosen/memory-map node in device tree
+Failed to read /chosen/memory-map/BootArgs property.
+Wrong property length on /chosen/memory-map/BootArgs.
+Failed to locate hibernate node in device tree
+hmac-reg-base
+Failed to read hmac-reg-base property.
+hmac-reg-base property size is incorrect.
+pmgr-reg-base
+Failed to read pmgr-reg-base property.
+pmgr-reg-base property size is incorrect.
+pmgr-reg-base is 0.
+pmgr-aes-offset
+Failed to read pmgr-aes-offset property.
+pmgr-aes-offset property size is incorrect.
+arm-io/aop/iop-aop-nub/aop-gapf-filters
+sptm-gapf-enable-reg
+Failed to read sptm-gapf-enable-reg property.
+sptm-gapf-enable-reg property size is incorrect.
+sptm-gapf-lock-reg
+Failed to read sptm-gapf-lock-reg property.
+sptm-gapf-lock-reg property size is incorrect.
+((uintptr_t)hib_ctx->aop_gapf_lock_reg & ~SPTM_PAGE_MASK) == reg_page
+memcmp(hib_ctx->hmac_buf, hib_header->handoffHMAC, sizeof(hib_ctx->hmac_buf)) == 0
+key-sptm-ctrr
+key-xnu-ctrr
+key-exclave-original
+(serialize != NULL) && (buffer != NULL)
+(serialize->bytes_accessed + size) <= serialize->total_length
+cur_page_pos <= max_page_size
+*next_page_ptr != NULL
+(src != NULL) && (wkdm_scratch != NULL)
+compressed_size > 0
+!is_immutable(dst_paddr)
+dst_paddr != hib_ctx->hibtext_stack_paddr
+io_range != NULL && (io_range->flags & HIB_PHYS_RANGE_FLAG_NEEDS_HIB)
+(src != NULL) && (dst != NULL) && (scratch != NULL)
+(((uintptr_t)wkdm_src) & 63) == 0
+(((uintptr_t)dst) & SPTM_PAGE_MASK) == 0
+result.status == 0
+memcmp(hib_ctx->hmac_buf, hib_header->image1PagesHMAC, sizeof(hib_ctx->hmac_buf)) == 0
+memory region HMAC mismatch!
+%s(%s:%d) - %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx)
+retype_params_U.raw_U
+%s(%s:%d) - %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx)
+current_type
+calling_domain(sptm_cpu_data_ptr_fast())
+current_type_params->owner_domain
+%s(%s:%d) - %s(%#llx), %s(%#llx), %s(%#llx)
+sptm_map_page
+root_pt_fte->type
+root_pt_fte->cpu_root_table.attr_idx
+pt_attr_pagezero_size(root_pt_fte->cpu_root_table.attr_idx)
+%s(%s:%d) - %s(%#llx)
+page_fte->type
+%s(%s:%d) - %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx), %s(%#llx)
+leaf_pt_fte->type
+is_user_mapping
+sptm_map_table
+child_pt_fte
+commpage_region_start
+commpage_region_size
+root_table_flags
+child_pt_paddr
+child_pt_fte->type
+parent_pt_fte->type
+child_pt_tsd->level
+target_level
+cpt_mapcnt_load(&child_pt_tsd->mapping_refcnt)
+rc16_load(&child_pt_tsd->nested_refcnt)
+expected_tte
+%s: rw_guard_release_shared: %p
+sptm_unmap_table
+sptm_root_table_paddr
+%s: incompatible page table type 0x%hhx found in page table %p
+%s(%s:%d) - %s(%#llx), %s(%#llx)
+sptm_surt_alloc
+sanitize_integer(surt_frame_U.UNSAFE_VALUE)
+surts[surt_index].fte.in_flight_ops
+sptm_surt_free
+%s: preflight or finalize mapping operation function pointers are NULL
+sptm_region_op
+mapping_data->page_fte->type
+%s: Page FTE does not match the validity of the previous PTE %#llx %p
+unmap_preflight_op
+pte_template
+cur_mapping_data
+%s: PTEP is somehow NULL
+unmap_finalize_op
+%s: prev_pte is somehow empty
+%s: Leaf page table FTE is somehow NULL
+update_preflight_op
+current_perms
+%s: prev_pte is somehow empty in the final pass
+update_finalize_op
+sptm_update_region
+sanitize_integer(root_pt_U.UNSAFE_VALUE)
+sanitize_integer(start_vaddr_U.UNSAFE_VALUE)
+sptm_disjoint_op
+%s: Leaf page table FTE is somehow NULL even though prev_pte is valid
+sptm_update_disjoint
+sanitize_integer(paddr_U.UNSAFE_VALUE)
+sanitize_integer(disjoint_ops_U.UNSAFE_VALUE)
+sptm_update_disjoint_multipage
+cur_entry_idx
+num_mappings
+multipage_ops_pa
+sptm_configure_shared_region
+shared_root_fte
+%s: Unexpected shared region state
+sptm_set_shared_region
+user_root_fte
+user_root_fte->cpu_root_table.attr_idx
+shared_root_fte->cpu_root_table.attr_idx
+shared_region_id
+expected_shared_region
+sptm_nest_region
+user_root_fte->cpu_root_table.shared_region_id
+shared_region_start_vaddr
+shared_region_end_vaddr
+new_user_tte
+sanitize_integer(user_root_pt_U.UNSAFE_VALUE)
+sanitize_integer(shared_root_pt_U.UNSAFE_VALUE)
+user_tt_fte->type
+sptm_unnest_region
+prev_shared_region_id
+shared_region_size
+sptm_switch_root
+override_flags
+override_mask
+sptm_guest_stage1_tlb_op
+sptm_guest_exit
+stage2_root_pt_fte
+stage2_root_pt_fte->type
+stage2_root_pt_tsd->vmid
+current_vmid
+stashed_vncr_paddr
+stashed_avncr_paddr
+sptm_batch_sign_user_pointer
+user_pointer_ops_pa
+sptm_guest_dispatch
+sanitize_integer(guest_state_paddr_U.UNSAFE_VALUE)
+vncr_fte->type
+avncr_fte->type
+%s: per-cpu last_vncr_paddr already set (%llx)
+%s: per-cpu last_avncr_paddr already set (%llx)
+%s: interrupts must be disabled by caller
+sptm_guest_va_to_ipa
+validate_managed_page
+sptm_validation.h
+sptm_first_phys
+sptm_last_phys
+validate_frame_type
+N_FRAME_TYPES
+validate_map_page_flags
+acquire_root_pt
+root_pt_fte->in_flight_ops
+validate_aligned_vaddr
+aligned_vaddr
+sptm_get_va_size(root_pt_fte)
+cpu_root_table_tsd
+validate_pte
+helper_enforce_paddr_mappable
+%s: FNXS is expected to be set.
+release_root_pt
+validate_pt_level_intermediate
+validate_tte
+table_acquire
+sptm_types.h
+cpu_page_table_tsd
+rc16_try_inc_from
+sptm_concurrency.h
+%s: refcnt overflow: rc %p old_value %lld value %lld
+crt_mapcnt_inc
+cpt_mapcnt_inc
+sptm_leaf_table_condemn_op
+acquire_surt_frame
+surt_frame_fte
+surt_frame_fte->type
+surt_frame_fte->in_flight_ops
+validate_surt_index
+subpage_user_root_tables_tsd
+validate_attribute_index
+supported_geometries[stage]
+validate_root_flags
+validate_asid
+sptm_num_asids
+release_surt_frame
+validate_vaddr_range_leaf
+helper_validate_aligned_vaddr_range
+cpu_page_tsd
+validate_managed_addr
+validate_page_count
+max_page_count
+validate_multipage_ops_entries
+max_entry_count
+sptm_update_papt
+acquire_shared_root_pt
+shared_root_pt
+shared_root_pt_fte
+shared_root_pt_fte->type
+shared_root_pt_fte->in_flight_ops
+%s: Unexpected shared region ID
+shared_region_get_state
+acquire_user_root_pt
+user_root_pt
+page_fte->in_flight_ops
+surt->fte.type
+surt->fte.in_flight_ops
+user_root_pt_fte
+user_root_pt_fte->cpu_root_table.flags
+shared_region_get_start_vaddr
+rc16_try_inc
+release_shared_root_pt
+release_user_root_pt
+validate_vaddr_range_twig
+validate_root_config
+%s: refcnt underflow: rc %p old_value %lld value %lld
+crt_mapcnt_dec
+acquire_stage2_root_pt
+stage2_root_pt
+stage2_root_pt_fte->in_flight_ops
+sptm_guest_enter
+sanitize_integer(stage2_root_pt_U.UNSAFE_VALUE)
+validate_sptm_ptrauth_user_key
+discriminator
+validate_user_pointer_ops_count
+max_ops_count
+SPTM-611.162.4|2026-07-30:11:37:56.603061|
+validate_sptm_cputrace_mode
+cputrace_validation.c
+validate_cputrace_strm_base_id
+%s: assert 'carveout_start_paddr' failed.
+validate_cputrace_pa_buffer
+%s: assert 'carveout_size' failed.
+%s: assert '!__builtin_add_overflow(carveout_start_paddr, carveout_size, &carveout_end_paddr)' failed.
+validate_cputrace_va_buffer
+validate_cputrace_va_region_id
+validate_cputrace_va_frame_vaddr
+%s: assert 'nb_units' failed.
+cputrace_pa_get_stream_base
+%s: assert '!(size_limit >> PROD_TRC_STRM_BASE_VALID_BASE)' failed.
+%s: assert '!(paddr >> PROD_TRC_STRM_BASE_ADDR_SIZE)' failed.
+cputrace_va_get_stream_base
+%s: Type (%d) class of FTE (%p) does not match the type class of the type-specific-data trying to be retrieved: actual (%d) != requested (%d).
+cpu_root_table_tsd_const
+GESH1GAP2GAPFFUB2GAP
+sptm.t8140.release
+(%Em*-Fm,5Gm.=Hm*Y@
+(%Em*-Fm,5Gm.=Hm*Y@
+(%Em*-Fm,5Gm.=Hm*Y@
+(%Em*-Fm,5Gm.=Hm*Y@
+(%Em*-Fm,5Gm.=Hm*Q@
+RRRRRRRRRRRRRRRR
+izo9jvo9kro9
+_8n!_8o1_8pA_8qQ_8`a_8aq_8
+L5@9M9@9N=@9
+TLQ@9MU@9NY@9J]@9
