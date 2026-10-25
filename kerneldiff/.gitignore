@@ -1,0 +1,4 @@
+# Downloaded/generated binary artifacts — too large for git, regenerate with scripts
+*.im4p
+*.macho
+*.lzfse

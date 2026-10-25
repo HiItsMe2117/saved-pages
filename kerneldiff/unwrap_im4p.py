@@ -67,12 +67,16 @@ def decompress_lzfse(payload, out_path):
 
     print(f"[*] Payload magic: {magic4.hex()} — needs LZFSE decompression")
 
-    # Try system lzfse binary
+    # Try system lzfse binary (write to temp file — stdin pipe unreliable)
     for candidate in ('/usr/bin/lzfse', '/usr/local/bin/lzfse'):
         if os.path.exists(candidate):
-            r = subprocess.run([candidate, '-decode', '-i', '-', '-o', out_path],
-                               input=payload, capture_output=True)
+            tmp = out_path + '.lzfse'
+            with open(tmp, 'wb') as f:
+                f.write(payload)
+            r = subprocess.run([candidate, '-decode', '-i', tmp, '-o', out_path],
+                               capture_output=True)
             if r.returncode == 0:
+                os.remove(tmp)
                 print(f"[+] Decompressed via {candidate}")
                 return True
 
