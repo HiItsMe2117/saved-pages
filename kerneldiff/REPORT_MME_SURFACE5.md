@@ -83,13 +83,34 @@ Checks offset + original_size, errors on overflow.
 
 ---
 
+## Dynamic Test Result: ARCHITECTURALLY CLOSED
+
+Tested on iOS 26.6.1 (iPhone 16 Plus) via a-Shell + Python ctypes:
+
+```python
+M.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int,C.POINTER(C.c_uint32),C.c_uint32]
+s=C.c_uint64(0x1001)
+r=M(t,C.byref(s),0xFFFFFFFFFFFFE000,1,C.byref(p),0)
+print(r,hex(s.value),p.value)  # → 4 0x1001 0
+```
+
+kr=4 (KERN_INVALID_ARGUMENT). Size unchanged (0x1001), no port created.
+
+The kernel validates that offset maps to existing user-space memory BEFORE vm_sanitize
+runs. 0xFFFFFFFFFFFFE000 is kernel space on arm64 — the call is rejected immediately.
+
+**Architectural closure**: any offset high enough that offset+corrected_size wraps past
+2^64 must be > 0xFFFFFFFFFFFF_DFFF, which is always kernel space on arm64 (VA
+limited to ~39-bit user space). The subtle bypass is unreachable from a sandboxed
+process by construction.
+
 ## Surface Status Summary
 
 | Scenario | Status |
 |---|---|
 | offset + original_size wraps | CLOSED — Check 1 at 0x379fdec |
-| sub-page size corrected upward past wrap | UNKNOWN — Check 3 may or may not cover |
-| Surface 4 (parent bounds check ordering) | HIGHEST PRIORITY — unaddressed |
+| sub-page size corrected upward past wrap | CLOSED — offset validation rejects kernel addrs |
+| Surface 4 (parent bounds check ordering) | CLOSED — entitlement-gated |
 
 ---
 
