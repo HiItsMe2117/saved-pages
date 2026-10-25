@@ -7,6 +7,9 @@
 |---|---|---|---|---|
 | 2026-10-25 | q_tail user-space exposure | kc_27.0.1.macho | NOT user-space reachable; entirely kernel-internal; all 3 gaps need kernel exec first | REPORT_QTAIL_USERSPACE.md |
 | 2026-10-25 | nvme-sptm EDT property | kc_26.6.1 + kc_27.0.1 | Set by iBoot; present in both versions; nvme-sppl downgrade: devices w/sppl only bypass all SPTM NVMe guards | REPORT_NVME_SPTM_EDT.md |
+| 2026-10-25 | sanitize_integer dispatch bypass | sptm_26.6.1.bin | IN PROGRESS — what does sanitize_integer do; can it be bypassed? | REPORT_SANITIZE_INT.md |
+| 2026-10-25 | vm_sanitize correction behavior | kc_26.6.1.macho | IN PROGRESS — soft-landing present on 26.6.1; correction behavior exploitable? | REPORT_VMSANITIZE_26.md |
+| 2026-10-25 | STRATEGIC PIVOT | — | Target is 26.6.1. Diffs show what 27.0.1 fixed = open on target. Not chasing Trigon. | — |
 | 2026-10-25 | nvme_instance writability | kc_27.0.1.macho + sptm_27.0.1.bin | NOT XNU-writable; linear flag in SPTM-private memory set at boot; q_tail walk-off now top target | REPORT_NVME_INSTANCE.md |
 | 2026-10-25 | SET_SQ_ENTRY bounds | sptm_27.0.1.bin | 3 gaps: linear-mode PA bypass, q_tail walk-off, unchecked payload | REPORT_NVME_SQENTRY.md |
 | 2026-10-25 | NVMe eps 10–15 guards | sptm_27.0.1.bin | Not unguarded; VIOLATION_NVME_ILLEGAL_CALL + allowed_functions bitmask in __DATA | REPORT_NVME_UNGUARDED.md |
