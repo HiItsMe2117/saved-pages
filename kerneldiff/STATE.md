@@ -43,7 +43,21 @@ Suggest: `/root/code/saved-pages/kerneldiff/` or `/root/`.
 - [x] Decompress LZFSE → raw Mach-O
       `kerneldiff/kc_26.6.1.macho` — Mach-O 64-bit arm64e, filetype=12
       `kerneldiff/kc_26.1.macho`   — Mach-O 64-bit arm64e, filetype=12
-- [ ] Diff / analyse
+- [x] Symbol extraction approach: production kernel stripped (nsyms=0)
+      Symbols identified via string scanning + MIG name-table scan
+- [x] Full diff analysis complete → REPORT.md
+
+## Key Findings Summary
+- **26.6.1 has 304 kexts** (+2: AppleThunderboltUSBType2 adapters); 26.1 has 302
+- **300/302 kexts changed**, 0 unchanged — entire kernel was recompiled
+- **__TEXT_EXEC shrank -1.96MB** in 26.6.1
+- **mach_make_memory_entry_64** MIG index shifted by 1 (from `!O_` to `!N_` in LINKEDIT)
+- **SPTM strings +19**: `sptm`/`sptm_` references grew significantly
+- **PPL being removed**: `unsupported on non-PPL systems` strings gone in 26.6.1
+- **Sandbox kext**: most changed kext by byte count (1.75MB diff), shrank 50KB
+- **corecrypto** and **AppleImage4** both changed — crypto/boot path updates
+- **Build root**: 26.6.1 uses `iPhoneOS26.6.Internal.sdk`, 26.1 uses `iPhoneOS26.1.Internal.sdk`
+- File-position diff not meaningful (code shifted due to 1.96MB size change)
 
 ## Kernel Build Strings (from IM4P description field)
 - 26.6.1: `KernelManagement_host-487.100.11`
