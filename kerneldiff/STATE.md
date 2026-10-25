@@ -123,14 +123,22 @@ Key SPTM findings:
 - GPU SAPT revocation gaps closed (AGX technique blocked)
 - Only 1 VIOLATION removed (restructure, not relaxation)
 
+## GENTER Map — COMPLETE (REPORT_GENTER_MAP.md)
+Key findings:
+- ALL 173 GENTER calls go through a centralized stub dispatch array in __TEXT_EXEC
+- Each stub encodes (table_id << 32) | endpoint_id in x16
+- 27.0.1 stubs are larger (64 vs 44 bytes): new ADRP+LDRB+CBNZ "SPTM ready" guard per stub
+- Dispatch table 0xe is entirely NEW with 16 endpoints (0..15) — entirely new XNU→SPTM surface
+- Table 9 endpoint 0 (0x900000000) is new — the core pmap/retype table gained endpoint 0
+- 4 old endpoints removed (tables 7, 9, 10)
+
 ## Next Steps — Exploit Surface Research
 Priority order:
-1. Map 23 new GENTER sites (kernel) → 36 SPTM endpoints (IN PROGRESS)
-   Goal: identify which kernel code paths call which SPTM endpoints
-2. Investigate SK_TO_SPTM_REGISTER_DISPATCH_TABLE (new, high-value)
-3. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write)
-4. Study mach_make_memory_entry "Unsanitary input" string removal (Trigon-adjacent)
-5. NVMe queue state machine (new state machine = potential state bugs)
+1. Identify dispatch table 0xe subsystem: which kext calls these 16 new stubs (NVMe/CPUTRACE/HIB)
+2. Trace callers of 0x900000000 (table 9, ep 0 — new core retype/mapping call)
+3. Extract SK binary (sk.*.im4p) → map 3 SK_TO_SPTM_ENDPOINTID GENTER calls
+4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE hibernation write path
+5. Study mach_make_memory_entry "Unsanitary input" string removal (Trigon-adjacent)
 
 ## Files on disk (NOT in git)
 - sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
