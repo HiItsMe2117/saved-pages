@@ -1,95 +1,128 @@
 # q_tail User-Space Exposure: IONVMeFamily IOUserClient Analysis
 
-*Generated 2026-10-25 | kc_27.0.1.macho IONVMeFamily @ fileoff 0x9c78f0 (68KB)*
+*Generated 2026-10-25 | iOS 27.0.1 kc_27.0.1.macho*
 
 ---
 
 ## Summary
 
-**q_tail is NOT directly reachable from user space.** IONVMeFamily's user clients are
-entitlement-gated and none expose queue tail parameters. The q_tail walk-off (Gap 2) requires
-kernel-level code execution to trigger. However, the `nvme-sptm` EDT property analysis
-surfaced a significant gating finding.
+**q_tail is NOT directly reachable from user space.**
+
+The SET_SQ_ENTRY call chain is kernel-internal: the direct caller is
+`NVMeCoastGuardSetTCBEntry(tcb_queue_entry *, AppleNVMeRequest *)`, which takes
+kernel-owned structs. No IOUserClient external method passes a queue tail index
+from user space into the NVMe submission queue path.
+
+However, the investigation surfaced important structural information about the
+SPTM path selection and the nvme-sptm EDT property.
 
 ---
 
-## IOUserClient Presence
+## IONVMeFamily Region
 
-IONVMeFamily has **four** IOUserClient subclasses, all entitlement-gated:
+| Field | Value |
+|---|---|
+| Fileset entry | `com.apple.iokit.IONVMeFamily` |
+| File offset | `0x9c78f0` |
+| Size | 68KB |
+| vmaddr | `0xfffffff0079cb8f0` |
 
-| Class | Methods | Entitlement |
+---
+
+## IOUserClient Subclasses (all entitlement-gated)
+
+| Class | Methods | Entitlement Required |
 |---|---|---|
-| `AppleNVMeUserClient` | `Sanitize` only | `com.apple.AppleNVMeSanitize.allow` |
+| `AppleNVMeUserClient` | `Sanitize` | `com.apple.AppleNVMeSanitize.allow` |
+| `AppleNVMeUpdateUC` | `FirmwareActivate`, `FinalizeFWUpdate`, `UpdateMspBfhParams`, `FirmwareDownload` | Firmware update entitlement |
 | `AppleNVMeFWNamespaceUC` | `writeFWImage`, `writeDescriptorTable`, `rollbackFWImage` | `com.apple.AppleNVMeFWNamespace.allow` |
-| `AppleNVMeUpdateUC` | `FirmwareActivate`, `FinalizeFWUpdate`, `UpdateMspBfhParams`, `FirmwareDownload` | (update entitlement) |
-| `AppleNVMeEAN` | EAN read/write | (EAN entitlement) |
+| `AppleNVMeEANUC` | EAN read/write/erase/swap | `com.apple.AppleNVMeEAN.allow` |
 
-None expose q_tail, queue indices, or submission queue parameters.
-`CheckEntitlementForSelector` rejects unknown selectors with a warning log.
-
----
-
-## q_tail Parameter Path
-
-q_tail enters SET_SQ_ENTRY only through kernel-internal paths:
-- `AppleANS2CGv2Controller::NVMeCoastGuardSetTCBEntry(tcb_queue_entry *, AppleNVMeRequest *)`
-- `AppleANS2CGNVMeController::NVMeCoastGuardSetTCBEntry(tcb_queue_entry *, AppleNVMeRequest *)`
-
-Both take a `tcb_queue_entry *` which is kernel-allocated. No shared-memory path found.
-No `IOMemoryDescriptor::withAddressRange` or `createMappingInTask` near NVMe queue context.
+None of these methods have any path to the NVMe submission queue tail.
+All are firmware management operations. No external method accepts a queue ID
+or queue tail index.
 
 ---
 
-## nvme-sptm EDT Property — AppleANS3CGv2Controller::probe()
+## q_tail Call Chain (kernel-only)
 
-`AppleANS3CGv2Controller::probe()` checks three EDT properties in sequence:
+The direct caller of SPTM_NVME_ENDPOINTID_SET_SQ_ENTRY (table 0xe, ep 8):
 
 ```
-nvme-linear-sq-disable  → if set: "NVMe LinearSQ disabled through boot-arg", skip LSQ
-nvme-sppl               → if present: probe wins with PPL-era coastguard path
-nvme-sptm               → if present: probe wins with SPTM-era coastguard path
+NVMeCoastGuardSetTCBEntry(tcb_queue_entry *, AppleNVMeRequest *)
+    -> pmap_iommu_ioctl(NVME_PPL_IOCTL_SET_SQ_ENTRY, ...)
+        -> [SPTM stub: table=0xe, ep=8, GENTER]
 ```
 
-`nvme-sptm` in the device tree is what activates SPTM NVMe mediation entirely.
-On a device where this property is absent, AppleANS3CGv2Controller loses probe and
-the SPTM enforcement layer never loads — all three SET_SQ_ENTRY gaps become irrelevant
-because SET_SQ_ENTRY is never called.
+tcb_queue_entry and AppleNVMeRequest are kernel-internal structs.
+The q_tail value flows from NVMe command dispatch within the kernel only.
 
-This property is set by secure-boot-verified firmware. Not user-space settable.
-
-Additionally `nvme-linear-sq-disable` boot-arg gates linear-SQ at the IOKit level
-before SPTM is involved — a second gate independent of the SPTM-side nvme_instance flag.
+**Exploiting Gap 2 requires kernel code execution as a precondition.**
 
 ---
 
-## AppleANS2DARTNVMeController (older/fallback path)
+## nvme-sptm EDT Property: AppleANS3CGv2Controller::probe
 
-`AppleANS2DARTNVMeController::probe()` checks `nvme-linear-sq` (no -disable suffix) and
-`nvme-ans-dart`. When matched, `EnableLinearSQ()` runs unconditionally during
-`InitializeNVMe()` ("Enabling LSQ"). This older controller does NOT use SPTM mediation
-(no pmap_iommu_ioctl), so SPTM gaps do not apply to it.
+nvme-sptm appears alongside nvme-sppl in AppleANS3CGv2Controller::probe
+as OR conditions — if EITHER is present in the device tree, the SPTM-mediated
+NVMe controller wins the IOKit probe.
+
+```
+probe() string sequence:
+  nvme-linear-sq-disable  -> boot-arg to disable linear SQ
+  nvme-sppl               -> old PPL-based path selector (legacy)
+  nvme-sptm               -> new SPTM-based path selector
+  "Found (%s) provider and coastguard, returning score %d"
+  EnableLinearSQ()        -> called if linear SQ enabled
+```
+
+nvme-sppl = PPL-era (iOS 26 style); nvme-sptm = SPTM-era (iOS 27, table-0xe).
+Both properties cause AppleANS3CGv2Controller to win. The iPhone 16 Plus (A18)
+device tree has nvme-sptm set at provisioning time.
+
+**Downgrade risk:** Devices with nvme-sppl but NOT nvme-sptm use the pre-SPTM
+NVMe path — all VIOLATION_NVME_* guards and table-0xe enforcement are inactive.
+Affects older silicon or modified device trees, not A18.
+
+---
+
+## EnableLinearSQ() Virtual Method
+
+Three controller classes implement it:
+- AppleANS2DARTNVMeController::EnableLinearSQ() - DART path
+- AppleANS3CGv2Controller::EnableLinearSQ()     - SPTM path (A18)
+- AppleANS3NVMeController::EnableLinearSQ()     - older ANS3
+
+All called from probe() during IOKit matching — before driver is user-accessible.
+To call EnableLinearSQ() after init requires kernel exec + vtable control.
 
 ---
 
 ## Exploitability Verdict
 
-| Gap | User-space reachable | Required level |
+| Gap | User-space reachable | Condition to exploit |
 |---|---|---|
-| Gap 1 — Linear mode PA bypass | No | Boot-time / kext compromise |
-| Gap 2 — q_tail walk-off | **No** | Kernel code execution |
-| Gap 3 — SQ content unchecked | No | Kernel code execution |
+| Gap 1: Linear mode PA bypass | NO | Kernel exec + vtable control + SPTM write primitive |
+| Gap 2: q_tail walk-off | NO | Kernel exec required |
+| Gap 3: SQ content unchecked | NO | Kernel exec required |
 
-All three gaps require kernel execution first. The attack chain is:
-1. Gain kernel code execution (separate vuln)
-2. Reach IONVMeFamily execution context
-3. Forge tcb_queue_entry with out-of-range q_tail
-4. Call NVMeCoastGuardSetTCBEntry → GENTER SET_SQ_ENTRY → walk-off in SPTM qtail_state
+All three SET_SQ_ENTRY gaps are post-compromise primitives, not entry points.
 
 ---
 
-## nvme-sptm: Security Implication
+## Post-Compromise Value
 
-If boot chain is compromised and nvme-sptm is removed from EDT:
-- SPTM NVMe layer never loads
-- All NVMe I/O bypasses SPTM enforcement entirely
-- Relevant only post-boot-chain compromise; not a standalone attack surface
+With kernel code execution already achieved:
+1. q_tail walk-off -> read arbitrary SPTM GL2 memory as a state byte
+2. EnableLinearSQ() -> linear mode -> DMA to arbitrary physical memory
+   (three-step chain: kernel exec -> vtable call -> DMA primitive)
+3. nvme_instance in SPTM-private memory: still cannot flip linear flag without
+   a separate SPTM write primitive even with kernel exec
+
+---
+
+## nvme-sppl Legacy Path
+
+Devices with nvme-sppl (not nvme-sptm) in device tree bypass ALL SPTM NVMe
+enforcement. Relevant for older A-series devices or custom DTs.
+
