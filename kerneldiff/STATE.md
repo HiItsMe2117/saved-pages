@@ -5,6 +5,8 @@
 
 | Date | Path | Tool/File | Finding | Report |
 |---|---|---|---|---|
+| 2026-10-25 | q_tail user-space exposure | kc_27.0.1.macho | NOT user-space reachable; entirely kernel-internal; all 3 gaps need kernel exec first | REPORT_QTAIL_USERSPACE.md |
+| 2026-10-25 | nvme-sptm EDT property | kc_26.6.1 + kc_27.0.1 | Set by iBoot; present in both versions; nvme-sppl downgrade: devices w/sppl only bypass all SPTM NVMe guards | REPORT_NVME_SPTM_EDT.md |
 | 2026-10-25 | nvme_instance writability | kc_27.0.1.macho + sptm_27.0.1.bin | NOT XNU-writable; linear flag in SPTM-private memory set at boot; q_tail walk-off now top target | REPORT_NVME_INSTANCE.md |
 | 2026-10-25 | SET_SQ_ENTRY bounds | sptm_27.0.1.bin | 3 gaps: linear-mode PA bypass, q_tail walk-off, unchecked payload | REPORT_NVME_SQENTRY.md |
 | 2026-10-25 | NVMe eps 10–15 guards | sptm_27.0.1.bin | Not unguarded; VIOLATION_NVME_ILLEGAL_CALL + allowed_functions bitmask in __DATA | REPORT_NVME_UNGUARDED.md |
@@ -187,16 +189,30 @@ KEY UNKNOWN: is nvme_instance in XNU-writable memory during IONVMeFamily operati
 - TXM has GEXIT (not GENTER) — TXM is called by SPTM, doesn't originate calls
 - SK→SPTM calls must be found within sptm_27.0.1.bin by reversing bootstrap sequence
 
+## NVMe Attack Chain — CRYSTALLIZED (post-kernel-exec only)
+All three SET_SQ_ENTRY gaps require kernel code execution as precondition. Call chain:
+  NVMeCoastGuardSetTCBEntry(tcb_queue_entry*, AppleNVMeRequest*)
+    → pmap_iommu_ioctl(NVME_PPL_IOCTL_SET_SQ_ENTRY)
+      → GENTER table=0xe ep=8
+Both args are kernel-owned structs. All 4 IONVMeFamily user clients (Sanitize, UpdateUC,
+FWNamespaceUC, EANUC) are firmware management only — none touch submission queues.
+
+Chain to GL2 DMA primitive (needs kernel exec first):
+  1. Kernel exec → vtable control → EnableLinearSQ() → linear mode active in nvme_instance
+  2. Linear mode → SET_SQ_ENTRY skips PA range check → DMA to arbitrary physical memory at GL2
+  3. Separately: q_tail walk-off → read arbitrary SPTM GL2 memory as 1-byte state value
+
+nvme-sppl downgrade: devices with nvme-sppl but NOT nvme-sptm route through pre-SPTM NVMe path.
+All VIOLATION_NVME_* guards and table-0xe enforcement inactive on such devices.
+
 ## Next Steps — Priority
-1. *** q_tail user-space exposure *** — does IONVMeFamily expose q_tail to user space via ioctl or IOSurface?
-   If yes: q_tail walk-off (Gap 2) = no prior code execution needed, fire from user space
-   Search IONVMeFamily PRELINK_TEXT for ioctl/IOUserClient handlers that take queue tail as param
-2. EnableLinearSQ() virtual method — callable from kext context; if attacker gets code exec in kext,
-   can set linear mode flag → enables the PA bypass (requires prior kext-level compromise)
-3. nvme-sptm EDT property in AppleANS3CGv2Controller::probe — unknown gating;
-   could select SPTM-mediated vs non-SPTM NVMe path
-4. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) to find SK entry in SPTM image
-5. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
+1. Find kernel code execution primitive (needed to reach NVMe GL2 chain above)
+   Candidates: vm_sanitize gap (REPORT_MME_SANITIZE), retype ep-0 (REPORT_RETYPE_EP0),
+   hibernation write (SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE)
+2. nvme-sppl downgrade path — which devices/configs have sppl but not sptm?
+   Any lab device with modified EDT could test the unguarded NVMe path
+3. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) → find SK entry in SPTM image
+4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
 
 ## Files on disk (NOT in git)
 - sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
