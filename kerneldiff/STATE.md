@@ -99,11 +99,25 @@ https://updates.cdn-apple.com/2026FallFCS/ff004e4f-0c2c-489a-b3c2-42b07bb962bc/i
 - **libsptm_init** path restructured (string removed)
 - **mach_make_memory_entry_64**: "Unsanitary input" validation string removed; MIG index `!N_`→`!f_`
 
-## Next Steps (after REPORT_27.md completes)
-- Download 26.6.2 (build 23G90) and 27.0 (build 24A437) for full version ladder
-- Run 26.6.1 → 26.6.2 (surgical patch diff)
-- Run 26.6.2 → 27.0 (major SPTM transition)
-- iOS 16 study: iPhone14,5 kernelcaches 16.1.1 + 16.6.1 (Trigon era / PPL)
+## Version Ladder — COMPLETE (kernel IDs collapsed the ladder)
+- 26.6.2 (23G90): KernelManagement_host-**487.100.11** — SAME as 26.6.1 (no kernel change)
+- 27.0   (24A437): KernelManagement_host-**514.2.2**   — SAME as 27.0.1 (no kernel change)
+- Ladder collapses to ONE diff: 26.6.1 → 27.0 ≡ REPORT_27.md (already done)
+
+## SPTM / TXM Binaries (bonus discovery from 27.0 IPSW listing)
+- `Firmware/sptm.t8140.release.im4p` — the actual SPTM binary (~1.2MB, GL2 execution)
+- `Firmware/txm.iphoneos.release.im4p` — TXM (Trust Monitor) binary
+- Can be extracted with fetch_kc.py targeting those filenames
+- "page enforcement failed" and SPTM enforcement logic lives in sptm.t8140
+
+## Next Steps
+- Extract sptm.t8140.release.im4p and txm.iphoneos.release.im4p from IPSW
+- Diff SPTM/TXM binaries across versions (26.6.1 → 27.0) for enforcement changes
+- iOS 16 study: iPhone14,5 kernelcaches 16.1.1 + 16.5.1 (Trigon era / PPL)
+
+## Files on disk — VERSION LADDER (NOT in git)
+- kc_26.6.2.macho (72.6MB) — same kernel as 26.6.1
+- kc_27.0.macho   (78.0MB) — same kernel as 27.0.1
 
 ## To resume in a new session
 1. `cd ~/code/saved-pages && git pull`
