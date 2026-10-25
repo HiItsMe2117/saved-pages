@@ -132,13 +132,49 @@ Key findings:
 - Table 9 endpoint 0 (0x900000000) is new — the core pmap/retype table gained endpoint 0
 - 4 old endpoints removed (tables 7, 9, 10)
 
-## Next Steps — Exploit Surface Research
-Priority order:
-1. Identify dispatch table 0xe subsystem: which kext calls these 16 new stubs (NVMe/CPUTRACE/HIB)
-2. Trace callers of 0x900000000 (table 9, ep 0 — new core retype/mapping call)
-3. Extract SK binary (sk.*.im4p) → map 3 SK_TO_SPTM_ENDPOINTID GENTER calls
-4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE hibernation write path
-5. Study mach_make_memory_entry "Unsanitary input" string removal (Trigon-adjacent)
+## Exploit Surface Research — COMPLETE (5 reports committed)
+
+### Table 0xe = SPTM_NVME (REPORT_TABLE0E.md)
+- Caller: com.apple.iokit.IONVMeFamily (exclusive, 34× string density vs next)
+- Call path: PAC-signed function pointer + disable_preemption wrapper at 0xab4bf78
+- NVMe was already in SPTM 26.6.1 (8 handlers); table-0xe is migration to named dispatch
+- Eps 10–15 blocked by allowed_functions bitmask (VIOLATION_NVME_ILLEGAL_CALL); bitmask in __DATA
+
+### Table 9 Endpoint 0 (REPORT_RETYPE_EP0.md)
+- Stub at 0xfffffff00b400594; confirmed absent in 26.6.1
+- No direct BL callers — arm64e PAC-signed indirect dispatch
+- Likely SPTM_XNU_RETYPE entry; parallel to new SK_TO_SPTM_ENDPOINTID_RETYPE (same release)
+- Retype is the crown jewel: type confusion between kernel/RO/user/GPU/secure memory
+
+### SET_SQ_ENTRY Bounds Gaps (REPORT_NVME_SQENTRY.md) ← HIGH VALUE
+THREE gaps found:
+1. LINEAR MODE BYPASS (0x0b86c4): CBZ skips entire PA range check when nvme-linear-sq set in nvme_instance
+   → IF nvme_instance is XNU-writable, DMA reaches arbitrary physical memory
+2. q_tail WALK-OFF: qtail_state[q_tail] accessed with no CMP before array index (LDRB w8, [x24, #0xc08])
+   → out-of-range q_tail reads arbitrary SPTM memory as state byte
+3. SQ entry content unchecked: command payload (opcode, PRP, CDW10-15) not inspected by SPTM
+KEY UNKNOWN: is nvme_instance in XNU-writable memory during IONVMeFamily operation?
+
+### mach_make_memory_entry "Unsanitary input" (REPORT_MME_SANITIZE.md)
+- Entire vm_sanitize_telemetry.c subsystem removed from 27.0.1 (covered 30+ VM APIs)
+- Soft-landing layer that logged bad inputs, clamped/corrected, continued → now GONE
+- Hard @%s:%d panic assertions in vm_memory_entry.c still present
+- Gap: whatever soft corrections did that hard assertions don't cover → unhandled in 27.0.1
+- Mirrors SPTM's simultaneous removal of sanitize_integer(UNSAFE_VALUE)
+
+### SK Binary (REPORT_SK_BINARY.md)
+- SK is NOT a standalone IPSW file — it lives sealed inside SPTM's image
+- SPTM bootstraps SK via MSR writes (entry point, stack) + GENTER at SPTM+0x9f90c
+- ExclaveCore bundle uses GENTER for L4 hypercalls (different calling convention, not SPTM)
+- TXM has GEXIT (not GENTER) — TXM is called by SPTM, doesn't originate calls
+- SK→SPTM calls must be found within sptm_27.0.1.bin by reversing bootstrap sequence
+
+## Next Steps — Priority
+1. *** nvme_instance writability *** — can IONVMeFamily (XNU kext) write nvme-linear-sq flag?
+   If yes: linear mode PA bypass = DMA primitive at GL2
+2. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) to find SK entry in SPTM image
+3. Map SK→SPTM handler code for RETYPE/PHYS_TO_TYPE/REGISTER_DISPATCH_TABLE
+4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
 
 ## Files on disk (NOT in git)
 - sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
