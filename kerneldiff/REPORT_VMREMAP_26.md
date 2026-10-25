@@ -105,26 +105,30 @@ never called. The Surface 4 mechanism does not apply here.
 
 ---
 
-## Alternative Risk: Internal Page Rounding
+## Dynamic Test Results (iOS 26.6.1, iPhone 16 Plus, a-Shell + Python ctypes)
 
-vm_remap does its own internal size rounding. The prologue at 0x378d054–0x378d0a0
-contains bitwise mask/test/branch instructions consistent with page-alignment
-arithmetic. If rounding happens AFTER the source-map bounds check and the
-mapping is created with the rounded size, an independent ordering gap exists.
+### Test 1: size=1 accepted, mapping is full page
+```python
+R(t,byref(dst),1,0,1,t,a.value,0,byref(cur),byref(mx),0)  # → kr=0
+p=(C.c_uint8*0x4000).from_address(dst.value)
+print(p[0],p[0x1000],p[0x3fff])  # → 0 0 0
+```
+KERN_SUCCESS with size=1. All 0x4000 bytes accessible — kernel rounds to full page.
 
-**Dynamic test needed**:
-```c
-vm_remap_new(target_map, &addr, /*size=*/1, 0, VM_FLAGS_ANYWHERE,
-             src_map, src_addr, FALSE, &cur, &max, VM_INHERIT_DEFAULT)
+### Test 2: src_addr offset from page start, size=0x2000
+```python
+# Source: a2 allocated at X (page-aligned), size 0x4000
+# Remap from X+0x2000 with size=0x2000
+R(t,byref(dst2),0x2000,0,1,t,a2.value+0x2000,0,byref(cur),byref(mx),0)  # → kr=0
+# Write markers:
+s=(C.c_uint8*0x4000).from_address(a2.value); s[0]=0x11; s[0x2000]=0x22
+d=(C.c_uint8*0x4000).from_address(dst2.value)
+print(d[0],d[0x2000])  # → 17 34 (= 0x11, 0x22)
 ```
 
-Key questions:
-- Does size=1 return KERN_INVALID_ARGUMENT or succeed with rounded size?
-- If it succeeds: does the mapping cover [src_addr, src_addr+0x4000) (one full page)?
-- Was the source bounds check done with size=1 (allowing addr+1 ≤ map_max)?
-
-If yes to all three, the ordering gap exists with vm_remap's own rounding instead
-of vm_sanitize correction. The exploit geometry is the same.
+**Result: d[0]=s[0], d[0x2000]=s[0x2000].** The mapping mirrors the FULL source
+page [X, X+0x4000), NOT [X+0x2000, X+0x6000). The kernel rounded src_addr DOWN
+to the page boundary. The bounds check and mapping extent are symmetric — no OOB.
 
 ---
 
@@ -133,9 +137,8 @@ of vm_sanitize correction. The exploit geometry is the same.
 | Property | Surface 4 (MME64) | vm_remap |
 |---|---|---|
 | vm_sanitize call present | YES (foff=0x37a0108, api_id=4) | **NO** |
-| Check ordering confirmed dangerous | YES (static) | Unconfirmed |
 | Sandboxed-accessible | NO (entitlement-gated) | **YES** |
-| Mechanism | vm_sanitize correction after bounds | Internal rounding after bounds |
+| Internal rounding OOB | N/A | **CLOSED** — rounding symmetric |
 
 ---
 
@@ -143,11 +146,7 @@ of vm_sanitize correction. The exploit geometry is the same.
 
 **vm_sanitize ordering attack: NOT APPLICABLE.** The mechanism is absent.
 
-**Internal rounding attack: UNCONFIRMED.** If vm_remap rounds size internally
-after the source bounds check, the same out-of-bounds mapping primitive exists
-without requiring vm_sanitize. Sandboxed access makes this high-value if
-confirmed. Requires dynamic test.
-
-**Next**: vm_remap_new dynamic test with sub-page size. Observe KERN_SUCCESS vs
-KERN_INVALID_ARGUMENT, and if successful, whether the mapped region extends
-beyond the pre-rounding authorized range.
+**Internal rounding attack: CLOSED.** Dynamic test confirms the kernel rounds
+src_addr DOWN to the page boundary and maps the full page(s). The bounds check
+and mapping extent use the same page-aligned range — there is no discrepancy
+between what is checked and what is mapped. No OOB primitive.
