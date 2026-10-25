@@ -253,3 +253,341 @@ Matched strings (SPTM/PPL/GXF/TXM keywords):
 
 ## ✓ Checkpoint: 4. mach_make_memory_entry Analysis — 12:12:54
 
+## 5. Kext Changes
+
+| | 26.6.1 | 27.0.1 | Δ |
+|---|---|---|---|
+| Total | 302 | 305 | +3 |
+| New | — | 4 | +4 |
+| Removed | 1 | — | -1 |
+| Common | 301 | 301 | — |
+
+### New kexts in 27.0.1
+- `com.apple.audio.TrustedClockingKEXT`
+- `com.apple.driver.AFKHIDTBDevice`
+- `com.apple.driver.VideoProcessing`
+- `com.apple.security.Image4`
+
+### Removed kexts
+- `com.apple.filesystems.hfs.kext`
+
+### Largest size changes
+
+| Kext (short) | 26.6.1 | 27.0.1 | Δ |
+|---|---|---|---|
+| `AppleM2ScalerCSCDriver` | 551K | 930K | +387,760 |
+| `AppleAVD` | 894K | 1133K | +244,272 |
+| `AppleSARService` | 125K | 281K | +159,712 |
+| `sandbox` | 1878K | 2015K | +140,448 |
+| `AppleAVE2` | 862K | 962K | +102,112 |
+| `kernel` | 1008K | 1056K | +49,152 |
+| `corecrypto` | 122K | 83K | -40,288 |
+| `CoreTrust` | 16K | 37K | +21,296 |
+| `AppleSEPManager` | 107K | 127K | +20,224 |
+| `AppleH16ANEInterface` | 294K | 314K | +20,192 |
+| `AppleImage4` | 67K | 86K | +19,552 |
+| `AppleSmartBatteryManagerEmbedded` | 36K | 54K | +18,656 |
+| `AppleMultitouchSPI` | 19K | 1K | -17,984 |
+| `ApplePPMCPMS` | 68K | 83K | +15,536 |
+| `AppleSynopsysUSB40XHCI` | 63K | 73K | +10,976 |
+| `AppleDiskImages2` | 15K | 25K | +10,352 |
+| `AppleUSBXDCIARM` | 48K | 58K | +9,920 |
+| `AppleSEPCredentialManager` | 71K | 80K | +9,856 |
+| `apfs` | 314K | 323K | +9,392 |
+| `AGXG17P` | 92K | 84K | -9,040 |
+| `AppleSynopsysUSBXHCI` | 45K | 53K | +8,640 |
+| `AppleGenericMultitouch` | 32K | 40K | +8,176 |
+| `IOMobileGraphicsFamily-DCP` | 30K | 38K | +8,032 |
+| `AppleIOPADMAStream` | 14K | 22K | +7,680 |
+| `AUC` | 3K | 11K | +7,456 |
+| `IOThunderboltFamily` | 536K | 543K | +7,168 |
+| `IOAccessoryManager` | 136K | 143K | +6,672 |
+| `IONVMeFamily` | 62K | 68K | +6,128 |
+| `AppleInputDeviceSupport` | 10K | 16K | +5,904 |
+| `AppleEmbeddedTouchEEPROM` | 3K | 9K | +5,808 |
+
+
+## ✓ Checkpoint: 5. Kext Changes — 12:55:47
+
+## 6. Changed Security-Relevant Strings
+
+- Matched in 26.6.1: 27387 | 27.0.1: 28484
+- New: **2491** | Removed: **1401**
+
+### New security strings in 27.0.1
+```
+ %d> (policy id=%d session_order=%d policy_order=%d result=%s)
+ 2000-2018 Apple Inc. All rights reserved. [IOHIDFamily-2360.2.2]"</string>
+ 2008-2026 Apple Inc. All rights reserved.</string>
+ 2016 Apple Inc. All rights reserved. [AppleInputDeviceSupport_kexts-10100.41]"</string>
+ 2018-2026 Apple Inc. All rights reserved.</string>
+ 2020 Apple. All rights reserved.</string>
+ 2022 - 2026 Apple. All rights reserved.</string>
+ 2025-2026 Apple Inc. All rights reserved.</string>
+ 2026 Apple Inc. All rights reserved.</string>
+!%\_kernel_pmap
+!entitlement || ACMKernelUtils::isEntitled(params.owningTask, entitlement)
+"AMFI cert overrun\n" @%s:%d
+"AMFI gave us too many certs\n" @%s:%d
+"AMFI: unable to create legacy CE context from monitor CE context: %u" @%s:%d
+"AMFI: unable to get legacy context after adjustment without monitor: %u" @%s:%d
+"AMFI: unable to obtain legacy CE context from CE context: %u" @%s:%d
+"AppleBTM: %s:%u " "AppleBTM: unable to read vddmain data from PMU. ret: 0x%08X" @%s:%d
+"AppleBTM: %s:%u " "Invalid specLen %d" @%s:%d
+"AppleBTM: %s:%u " "Offset %d is not within results_buffer bounds" @%s:%d
+"AppleBTM: %s:%u " "getPmuSampleSpec returned NULL" @%s:%d
+"AppleDiagnosticDataAccess does not support partial region data for NAND backed regions" @%s:%d
+"AppleOLYHAL Panic: AppleBCMWLAN dext init failure unrecoverable after %u chip resets" @%s:%d
+"ApplePPM: %s:%u " "Both pmgr and AON PTD enabled in EDT, target must enable exactly one PTD path" @%s:%d
+"ApplePPM: %s:%u " "Couldn't add object for client id %u in _multiClientList" @%s:%d
+"ApplePPM: %s:%u " "Incorrect size for EDT property!" @%s:%d
+"ApplePPM: %s:%u " "Input ptr currEnv is invalid" @%s:%d
+"ApplePPM: %s:%u " "Input ptr prevEnv is invalid" @%s:%d
+"ApplePPM: %s:%u " "Invalid clientId %d in multiClientList" @%s:%d
+"ApplePPM: %s:%u " "Invalid multi-client-thermal-dup clientID %d" @%s:%d
+"ApplePPM: %s:%u " "Legacy PTD requires ApplePMGRNub provider" @%s:%d
+"ApplePPM: %s:%u " "PTD multi-read failed: 0x%x" @%s:%d
+"ApplePPM: %s:%u " "PTD write failed: 0x%x" @%s:%d
+"ApplePPM: %s:%u " "_multiEMAMaxTracker not initialized for index=%d" @%s:%d
+"ApplePPM: %s:%u " "currData is null" @%s:%d
+"ApplePPM: %s:%u " "currValues is null" @%s:%d
+"ApplePPM: %s:%u " "disablePTDEntryInterrupt returned 0x%08x" @%s:%d
+"ApplePPM: %s:%u " "enablePTDEntryInterrupt returned 0x%08x" @%s:%d
+"ApplePPM: %s:%u " "handleRangeInterrupt called with unexpected range %u (expected %u)" @%s:%d
+"ApplePPM: %s:%u " "interrupt source not initialized" @%s:%d
+"ApplePPM: %s:%u " "invalid entry at index %u in multiClientList" @%s:%d
+"ApplePPM: %s:%u " "invalid index =%d" @%s:%d
+"ApplePPM: %s:%u " "max_out is null" @%s:%d
+"ApplePPM: %s:%u " "numEntriesPPMToSMC %u exceeds kOutboundBufferSize %u" @%s:%d
+"ApplePPM: %s:%u " "peakPowerEnv is null" @%s:%d
+"ApplePPM: %s:%u " "ptML lookup failed: 0x%x" @%s:%d
+"ApplePPM: %s:%u " "ptML returned unexpected identifier for PPM->SMC range: 0x%x" @%s:%d
+"ApplePPM: %s:%u " "ptML returned unexpected identifier for SMC->PPM range: 0x%x" @%s:%d
+"ApplePPM: %s:%u " "ptML returned zero entries for PPM->SMC range" @%s:%d
+"ApplePPM: %s:%u " "ptML returned zero entries for SMC->PPM range" @%s:%d
+"ApplePPM: %s:%u " "pwrLogValues not initialized %d\n" @%s:%d
+"ApplePPM: %s:%u " "writePTDEntry %d returned 0x%08x" @%s:%d
+"AppleS8000AESAccelerator::_distribute_dkey: DKey distribution failure (aes-version=%u)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d)" @%s:%d
+"AppleThunderboltNHIReceiveRingGenericACIO(%d)<%d>::shouldDoubleBuffer - " "double buffering detected (o=0x%x, l=0x%x, seg=0x%llx)\n" @%s:%d
+"AppleThunderboltNHITransmitRing(%d)<%d>::shouldDoubleBuffer - " "double buffering detected (o=0x%x, l=0x%x, seg=0x%llx)\n" @%s:%d
+"AppleThunderboltNHITransmitRingGenericACIO(%d)<%d>::shouldDoubleBuffer - " "double buffering detected (o=0x%x, l=0x%x, seg=0x%llx)\n" @%s:%d
+"Bad AMFI Detached Certs size" @%s:%d
+"Image4: attempted to get ASMB without PPL context" @%s:%d
+"Image4: attempted to get chosen without PPL context" @%s:%d
+"Image4: attempted to get darwin-data without PPL context" @%s:%d
+"Image4: attempted to get defaults without PPL context" @%s:%d
+"Image4: attempted to get expert without PPL context" @%s:%d
+"Image4: attempted to get manifest properties without PPL context" @%s:%d
+"Image4: attempted to get product without PPL context" @%s:%d
+"Image4: attempted to initialize PPL expert without a PPL" @%s:%d
+"Image4: attempted to roll nonce without PPL context" @%s:%d
+"Image4: attempted to roll nonce without PPL mutable buffer" @%s:%d
+"Image4: attempted to set nonce digest without PPL context" @%s:%d
+"Image4: attempted to set nonce digest without PPL mutable buffer" @%s:%d
+"Image4: failed to load local policy with code-signing-monitor: %u" @%s:%d
+"Image4: nonce digest too large for PPL: %lu" @%s:%d
+"Image4: unable to setup /chosen node in PPL" @%s:%d
+"Image4: unable to setup /chosen/manifest-properties node in PPL" @%s:%d
+"Image4: unable to setup /defaults node in PPL" @%s:%d
+"Image4: unable to setup /product node in PPL" @%s:%d
+"Image4: unexpected length of PPL mutable buffer: %lu" @%s:%d
+```
+
+### Removed security strings
+```
+ 2000-2018 Apple Inc. All rights reserved. [IOHIDFamily-2238.162.1]"</string>
+ 2008-2020 Apple Inc. All rights reserved.</string>
+ 2016 Apple Inc. All rights reserved. [AppleInputDeviceSupport_kexts-9140.6]"</string>
+"%s:%u:" "pActionType == kAppleOLYHALPortInterfacePowerActionTypeHardReset" @%s:%d
+"AMFI: '%s': Invalid first Code Directory should have been caught by xnu.\n" @%s:%d
+"AppleBCMWLAN Dext didn't respawn within %u milliseconds\n" @%s:%d
+"ApplePPM: %s:%u " "CPU power profile wrong! total(%d, %d, %d), leftover(%d, %d, %d), max(%d, %d, %d), profile(%d, %d, %d)" @%s:%d
+"ApplePPM: %s:%u " "No support for sending budget limits to userspace clients" @%s:%d
+"ApplePPM: %s:%u " "budget update failure" @%s:%d
+"ApplePPM: %s:%u " "inconsistent inputs (%p, %d, %d)" @%s:%d
+"ApplePPM: %s:%u " "index %d, count %u" @%s:%d
+"ApplePPM: %s:%u " "must create %s entity in subclass" @%s:%d
+"ApplePPM: %s:%u " "writePTDEntry %i returned 0x%08x" @%s:%d
+"AppleS8000AESAccelerator::_distribute_dkey: DKey distribution failure" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d, Perf %d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d, Perf %d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d, Perf %d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Ids %d/%d/%d/%d/%d/%d/%d/%d/%d, Perf %d/%d)" @%s:%d
+"AppleSocHot: Hot Hot Hot (%08X/%d %08X/%d %08X/%d %08X/%d %08X/%d, Perf %d/%d)" @%s:%d
+"IOMFB: cannot find AppleMobileFileIntegrity" @%s:%d
+"IOMFB: failed to cast AMFI service!" @%s:%d
+"IOMFB: failed to look up AMFI service!" @%s:%d
+%06lu.%06u %s::%s: AppleUSBNCM host version %#x (%s)
+%06lu.%06u %s::%s: applying 0x%08x flags on interface
+%lldus AppleThunderboltHALGenericACIO::unpoweredStart - bootargs: acio = 0x%08x
+%s() Requesting AppleImage4 Validation
+%s: %s:  fEnforceModelSignatureChecks = %d
+%s: %s: AppleANEDrv::DriverInitiatedSleepTimerTimeOut
+%s: %s: ERROR: Bad argument codeSigningTeamId=%p codeSigningIdentity=%p
+%s: %s: Invalid program present in client list %p. pMapping=%p
+%s: %s: client has entitlement to opt out all its models from unwire timer
+%s: %s: client has entitlement to opt this model out of unwire timer
+%s: <pid %d> Disallow flow add, requested nexus mismatched with NECP result - requested ifindex %d policy <result %d ifindex %d>
+%s: AppleMultitouchSPI::callPowerFunction(%lu) - _powerFunction_ana returned 0x%08X
+%s: AppleMultitouchSPI::callPowerFunction(%lu) - _powerFunction_mamba returned 0x%08X
+%s: Couldn't make an AppleMultitouchZ2SPI out of _owner
+%s: DATA-TRACE <%s %llx>: %s - fam %d proto %d port <local %d/%d remote %d/%d> <local %s remote %s> <drop-all order %d> <pid=%d Application %d Real Application %d BoundInterface %d> (policy id=%d sess
+%s: DATA-TRACE: Socket Policy - Send/Recv: %p (BoundInterface %d Proto %d) Policy %d Result %d Parameter %d Allowed %d <filter_control_unit %d flow_divert_aggregate_unit %d>
+%s: Error: AppleMultitouchSPIPowerStats::fromService() returned NULL
+%s: Error: AppleMultitouchSPIPowerStats::updateReport() returned 0x%08X
+%s: Error: AppleMultitouchSPIPowerStats::updateWithPowerStatsData() returned 0x%08X
+%s: attempt to nest stage 2 pmap %p @%s:%d
+%s: attempt to nest unsupported pmap %p of type 0x%hhx @%s:%d
+%s: bad PVE pte_p=%p pmap=%p prot=%d options=%u, pvh=%p, pveh_p=%p, pve_p=%p, pte=0x%llx, va=0x%llx ppnum: 0x%x @%s:%d
+%s: copyTrustCacheFromInputArguments failed: %d
+%s: failed pmap_enter_addr, pmap=%p, va=%#llx, pa=%llu, size=%u, prot=%#x, flags=%#x @%s:%d
+%s: libsptm_init failed: %u @%s:%d
+%s: unexpected pmap_enter_pv ret code: %d. new_pve_p=%p pmap=%p @%s:%d
+%s:%d: image4_trust_evaluate: failed to authenticate root-hash (error %s <%d>)
+%s:%d: image4_trust_evaluate: successfully validated the payload and the manifest
+%s:%d: waitForService (AppleImage4) failed
+%s::%d:AppleNVMeFWNamespace rollbackFWImage failed : 0x%8x
+%s::%d:AppleNVMeFWNamespace writeDescriptorTable failed : 0x%8x
+%s::%d:AppleNVMeFWNamespace writeFWImage failed : 0x%8x
+%s::%d:NVMe EAN entitlement value bad
+%s::%d:NVMe FWNamespace entitlement value bad
+%s::%d:NVMe Namespace Device entitlement value bad
+%s::%d:NVMe tunnel entitlement is false
+%s::%d:NVMe update entitlement value bad
+%s::%s():Failed to set pipe policy property (%d) 
+%s::%s():Failed to set unified log policy property (%d) 
+%s::%s:failed to run policy
+%s::%s:policy/update failure
+(IOHIDEventService::Action) OSMetaClassBase:: _ptmf2ptf(this, (void (OSMetaClassBase::*)(void)) &ApplePearlSEPDriver::loggingAnalyticsAlsHidEventServiceCallback)))
+*** AppleMultitouchSPI::killDevice - %s ***
++I\_pmap_in_ppl
+/AppleInternal/Library/BuildRoots/4~CVr6ugDpm3s5Uz3ynuAbN60mNdHPVmBIhGkedjk/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.6.Internal.sdk/usr/local/sta
+/Library/Caches/com.apple.nsurlsessiond/Downloads/com.apple.WorkflowKit.BackgroundShortcutRunner
+/Library/Caches/com.apple.xbs/059D1497-84D3-4191-9FB0-8B5B31D266AF/TemporaryDirectory.2Ux1GJ/Sources/AppleS8000/AppleS8000AES.cpp
+/Library/Caches/com.apple.xbs/059D1497-84D3-4191-9FB0-8B5B31D266AF/TemporaryDirectory.2Ux1GJ/Sources/AppleS8000/AppleS8000AES.h
+/Library/Caches/com.apple.xbs/06216286-E3CA-4B33-B6CA-2AAA6D369250/TemporaryDirectory.lUIOvk/Sources/AppleARMPMU/AppleARMPMUCharger.cpp
+/Library/Caches/com.apple.xbs/0990A85E-B1D3-4C32-8FC1-536642F52678/TemporaryDirectory.egh5pa/Sources/AppleARMIISAudio/src/kext/AppleARMIISAudio/core/helper/IISAudioDeviceHelper.cpp
+/Library/Caches/com.apple.xbs/0990A85E-B1D3-4C32-8FC1-536642F52678/TemporaryDirectory.egh5pa/Sources/AppleARMIISAudio/src/kext/IsolatedStreamECProxy/IOService/IISAudioIsolatedOutputStreamECProxy.cpp
+/Library/Caches/com.apple.xbs/0990A85E-B1D3-4C32-8FC1-536642F52678/TemporaryDirectory.egh5pa/Sources/AppleARMIISAudio/src/kext/IsolatedStreamECProxy/IOService/IISAudioIsolatedStreamECProxy.cpp
+/Library/Caches/com.apple.xbs/12391FD8-DF81-421F-A835-095FC7556FC2/TemporaryDirectory.diJ8B9/Sources/AppleFSCompression/Common/ChunkCompression.cpp
+/Library/Caches/com.apple.xbs/12391FD8-DF81-421F-A835-095FC7556FC2/TemporaryDirectory.diJ8B9/Sources/AppleFSCompression/Compressors/Zlib/compressorKext.c
+/Library/Caches/com.apple.xbs/187643ED-D799-4F14-87B7-DEF111791EA5/TemporaryDirectory.RCGAPz/Sources/AudioDMAController/v4p0/Kext/ADMAFamily/ADMAChannelInterface.cpp
+/Library/Caches/com.apple.xbs/187643ED-D799-4F14-87B7-DEF111791EA5/TemporaryDirectory.RCGAPz/Sources/AudioDMAController/v4p0/Kext/Source/AudioDMAChannelStateMachine.cpp
+/Library/Caches/com.apple.xbs/187643ED-D799-4F14-87B7-DEF111791EA5/TemporaryDirectory.RCGAPz/Sources/AudioDMAController/v4p0/Kext/Source/AudioDMAController.cpp
+/Library/Caches/com.apple.xbs/187643ED-D799-4F14-87B7-DEF111791EA5/TemporaryDirectory.RCGAPz/Sources/AudioDMAController/v4p0/Kext/Source/IOInterruptQueueEventSource.cpp
+```
+
+
+## ✓ Checkpoint: 6. Security Strings — 13:03:57
+
+## 7. `__TEXT_EXEC` Diff Statistics
+
+- 26.6.1: 45472K | 27.0.1: 49120K | Δ +3648K
+
+- Pages compared: 11,368
+- Changed pages: **11,368** (100%)
+- Unchanged pages: 0
+
+### 20 Most Surgical Patches (fewest bytes changed per page)
+
+| Page | __TEXT_EXEC+offset | A fileoff | B fileoff | Bytes Δ | Nearby string |
+|------|--------------------|-----------|-----------|---------|---------------|
+| 10002 | +0x2712000 | 0x0398a000 | 0x03b42000 | 3553 | `—` |
+| 11359 | +0x2c5f000 | 0x03ed7000 | 0x0408f000 | 3566 | `—` |
+| 10001 | +0x2711000 | 0x03989000 | 0x03b41000 | 3574 | `—` |
+| 11366 | +0x2c66000 | 0x03ede000 | 0x04096000 | 3608 | `—` |
+| 11363 | +0x2c63000 | 0x03edb000 | 0x04093000 | 3628 | `—` |
+| 11365 | +0x2c65000 | 0x03edd000 | 0x04095000 | 3628 | `—` |
+| 11367 | +0x2c67000 | 0x03edf000 | 0x04097000 | 3641 | `—` |
+| 11362 | +0x2c62000 | 0x03eda000 | 0x04092000 | 3680 | `—` |
+| 11364 | +0x2c64000 | 0x03edc000 | 0x04094000 | 3687 | `—` |
+| 10003 | +0x2713000 | 0x0398b000 | 0x03b43000 | 3734 | `—` |
+| 6784 | +0x1a80000 | 0x02cf8000 | 0x02eb0000 | 3738 | `—` |
+| 8159 | +0x1fdf000 | 0x03257000 | 0x0340f000 | 3741 | `—` |
+| 11358 | +0x2c5e000 | 0x03ed6000 | 0x0408e000 | 3744 | `—` |
+| 751 | +0x2ef000 | 0x01567000 | 0x0171f000 | 3764 | `—` |
+| 1164 | +0x48c000 | 0x01704000 | 0x018bc000 | 3764 | `—` |
+| 11361 | +0x2c61000 | 0x03ed9000 | 0x04091000 | 3764 | `—` |
+| 8189 | +0x1ffd000 | 0x03275000 | 0x0342d000 | 3766 | `—` |
+| 4323 | +0x10e3000 | 0x0235b000 | 0x02513000 | 3773 | `—` |
+| 3954 | +0xf72000 | 0x021ea000 | 0x023a2000 | 3777 | `—` |
+| 9961 | +0x26e9000 | 0x03961000 | 0x03b19000 | 3777 | `—` |
+
+
+## ✓ Checkpoint: 7. __TEXT_EXEC Diff — 13:04:20
+
+## Key Takeaways
+
+### Architecture (iOS 26.6.1 → 27.0.1)
+- **Kernel build 487.100.11 → 514.2.2** (+27 minor versions)
+- **__TEXT_EXEC grew ++3648K** — significant new kernel code
+- **__PPLTEXT absent in both** — PPL already fully removed before 26.6.1
+- **__DATA_SPTM: 240K → 304K (+64K)** — SPTM data tables grew significantly
+
+### GENTER (SPTM trap calls) — from earlier analysis
+- **150 → 173 in __TEXT_EXEC (+23 new SPTM call sites)**
+- Kexts: 1 → 1 (unchanged)
+
+### Kexts
+- 302 → 305 kexts
+- 4 new, 1 removed
+
+### Security
+- 2491 new security-relevant strings; 1401 removed
+
+### __TEXT_EXEC Code Pages
+- 11,368 of 11,368 pages changed (100%)
+- Top-20 most surgical patches listed above
+
+### For Trigon (CVE-2023-32434) Research
+- `mach_make_memory_entry` present in both — see Section 4 for offsets
+- MIG dispatch table shifted in both 26.6.1 and 27.0.1
+- To study the actual patch, download iOS 16.1.1 vs 16.5.1 for iPhone14,5
+  (A15 arm64e, PPL-era) — SPTM-era kernels restructured the call path entirely
+
+## Troubles & Solutions
+
+**T1 — ZIP64 IPSW sentinels** (both cd_offset and local_off = 0xFFFFFFFF)
+Solution: parse ZIP64 EOCD locator + ZIP64 extra field (tag 0x0001).
+
+**T2 — lzfse stdin pipe fails on Alpine Linux**
+Solution: write payload to temp file first.
+
+**T3 — GNU nm doesn't speak Mach-O**
+Solution: Python Mach-O parser walking LC_FILESET_ENTRY (0x80000035).
+
+**T4 — Wrong LC_FILESET_ENTRY constant** (had 0x80000041)
+Solution: dump all cmd types; found 302 entries of 0x80000035.
+
+**T5 — Production kernel nsyms=0**
+Solution: string-anchor method via panic/log strings.
+
+**T6 — git push OOM with binary files** (pack-objects signal 9)
+Solution: .gitignore for *.macho *.im4p *.lzfse.
+
+**T7 — pip not available**
+Solution: `apk add py3-pip`
+
+**T8 — pip install blocked by PEP 668**
+Solution: `pip install --break-system-packages`
+
+**T9 — All pages differ (ADRP noise from different link base)**
+Solution: numpy ADRP normalisation, or accepted as recompile evidence.
+
+**T10 — apt-get not available**
+Solution: `apk add` (Alpine Linux).
+
+**T11 — String extraction OOM** (split-on-null creates millions of Python objects)
+Solution: streaming chunked reader with re.finditer — never holds > 2MB of data.
+
+**T12 — __TEXT_EXEC numpy diff OOM** (45MB + 49MB arrays + comparison)
+Solution: chunked 512-page reads, delete arrays after each chunk with gc.collect().
+
+
+## ✓ Checkpoint: Troubles & Solutions — 13:04:20
+
