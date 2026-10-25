@@ -110,10 +110,32 @@ https://updates.cdn-apple.com/2026FallFCS/ff004e4f-0c2c-489a-b3c2-42b07bb962bc/i
 - Can be extracted with fetch_kc.py targeting those filenames
 - "page enforcement failed" and SPTM enforcement logic lives in sptm.t8140
 
-## Next Steps
-- Extract sptm.t8140.release.im4p and txm.iphoneos.release.im4p from IPSW
-- Diff SPTM/TXM binaries across versions (26.6.1 → 27.0) for enforcement changes
-- iOS 16 study: iPhone14,5 kernelcaches 16.1.1 + 16.5.1 (Trigon era / PPL)
+## SPTM Binary Analysis — COMPLETE
+Commit: 6a85b0a → REPORT_SPTM.md (267 lines)
+String files: sptm_26.6.1_strings.txt, sptm_27.0.1_strings.txt
+Google Doc: https://docs.google.com/document/d/1Gp4FXADaiA2W-AAym7uPtVjr19T_lRjbJoG2RycuyZE/edit
+
+Key SPTM findings:
+- Dispatch redesigned: raw integers → named (table_id, endpoint_id) pairs
+- 0 → 36 ENDPOINTIDs, 2 → 21 DISPATCH_TABLE IDs
+- EXEC_MODE_SK_DEFAULT NEW — SK now a first-class SPTM caller
+- 3 new SK_TO_SPTM endpoints: RETYPE, PHYS_TO_TYPE, REGISTER_DISPATCH_TABLE
+- GPU SAPT revocation gaps closed (AGX technique blocked)
+- Only 1 VIOLATION removed (restructure, not relaxation)
+
+## Next Steps — Exploit Surface Research
+Priority order:
+1. Map 23 new GENTER sites (kernel) → 36 SPTM endpoints (IN PROGRESS)
+   Goal: identify which kernel code paths call which SPTM endpoints
+2. Investigate SK_TO_SPTM_REGISTER_DISPATCH_TABLE (new, high-value)
+3. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write)
+4. Study mach_make_memory_entry "Unsanitary input" string removal (Trigon-adjacent)
+5. NVMe queue state machine (new state machine = potential state bugs)
+
+## Files on disk (NOT in git)
+- sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
+- sptm_27.0.1.bin (1.14MB) — SPTM binary iOS 27.0.1
+- sptm_26.6.1.im4p, sptm_27.0.1.im4p — raw IM4P containers
 
 ## Files on disk — VERSION LADDER (NOT in git)
 - kc_26.6.2.macho (72.6MB) — same kernel as 26.6.1
