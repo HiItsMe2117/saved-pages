@@ -125,17 +125,38 @@ Targets: `com.apple.mediaserverd`, `com.apple.coremedia.remotepipeline`
 
 ---
 
-### Surface D — SpringBoard CFPreferences (status bar seconds)
+### Surface D — SpringBoard status bar seconds (clock demo)
 
-**Status:** Written to disk, confirmed by readback. Requires respring to activate.
+**Status:** CFPreferences approach was WRONG. Real mechanism found via SecondHand source (LeminLimez, GitHub).
 
-```python
-CFPreferencesSetValue(cfstr('UIStatusBarShowingClockSeconds'), kCFBooleanTrue,
-    cfstr('com.apple.springboard'), kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-CFPreferencesSynchronize(cfstr('com.apple.springboard'), kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+**How it actually works:**
+SpringBoard uses a private UIKit class `UIStatusBarServer` with a `StatusBarOverrideData` struct. To show seconds, you override the `timeString` field (e.g. `"9:41:22"`) and post it:
+
+```objc
+StatusBarOverrideData *overrides = [UIStatusBarServer getStatusBarOverrideData];
+overrides->overrideTimeString = 1;
+strcpy(overrides->values.timeString, "9:41:22");  // format with seconds
+[UIStatusBarServer postStatusBarOverrideData:overrides];
+[UIStatusBarServer permanentizeStatusBarOverrideData];
 ```
 
-Key name `UIStatusBarShowingClockSeconds` — not confirmed correct. SpringBoard binary strings not yet grepped. Needs respring + key name verification.
+There is NO CFPreferences key for this. The `UIStatusBarShowingClockSeconds` key we wrote is irrelevant.
+
+**Two paths in SecondHand:**
+1. **TrollStore path** (elevated entitlements): calls `UIStatusBarServer` directly — affects system-wide status bar
+2. **MacDirtyCow path**: writes `StatusBarOverrideData` struct to `/var/mobile/Library/SpringBoard/statusBarOverridesEditing` — SpringBoard reads it on refresh
+
+**Why we can't do it yet from sandbox:**
+`UIStatusBarServer postStatusBarOverrideData:` from a sandboxed app only affects our own in-app status bar. To affect the system-wide bar we need either:
+- TrollStore entitlements (requires privileged install), OR
+- Privileged write to `/var/mobile/Library/SpringBoard/statusBarOverridesEditing`
+
+**This is exactly what the sandbox escape chain is for.** Once we execute code in SpringBoard's context (via backboardd pivot), calling `[UIStatusBarServer postStatusBarOverrideData:]` there affects the global status bar — that's the seconds demo milestone.
+
+**Struct layout (iOS 16.x, may differ on 26.x — verify offsets before use):**
+- `timeString` field: char[64] at a fixed offset in `StatusBarRawData`
+- `overrideTimeString`: 1-bit flag in `StatusBarOverrideData`
+- Full struct in SecondHand: `SecondHand/StatusMagic/iOS16_1/StatusSetter16_1.m`
 
 ---
 
