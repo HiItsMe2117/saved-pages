@@ -169,7 +169,7 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 | `io_hideventsystem_open` | `0x1b79deda4` |
 | `IOHIDEventSystemClientCreate` | resolved via dyld |
 | `IOHIDEventSystemClientSetDispatchQueue` | `0x1b79f8edc` |
-| `io_hideventsystem` service port | `0x1bdf3` (runtime, changes per boot) |
+| `io_hideventsystem` service port | `0x1bdf3` (runtime — changes every boot; always re-lookup via `bootstrap_look_up(bp, "com.apple.iohideventsystem", &svc)`) |
 
 ---
 
