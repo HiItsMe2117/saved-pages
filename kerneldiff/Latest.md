@@ -69,14 +69,29 @@ Dynamic test not yet run.
 - **Surface 5** (offset+size wrap): top candidate — call site in TEXT_EXEC at foff=0x3707668
 - **Surface 4** (parent bounds ordering): second candidate
 
-**Probed 2026-10-28 — results:**
-- Apple Silicon uses 16KB pages (0x4000), not 4KB — all probes must use 0x4000 page size
-- Surface 4 (offset=0x3000, size=0x4000 on 16KB parent): **KERN_INVALID_ARGUMENT** — rejected
-- Surface 5 (offset=0xffffffffffffc000, size=0x4000 — wrap): **KERN_INVALID_ARGUMENT** — rejected
-- These variants of mach_make_memory_entry_64 with parent entry are fully checked on 26.6.1
-- **Conclusion:** the vm_sanitize gap may be in a different API call, not parent-entry mode of MMME64. Need to read REPORT_VMSANITIZE_26.md to find the exact call site (foff=0x3707668 in kc_26.6.1.macho).
+**Probed 2026-10-28 — SURFACE 4 BUG CONFIRMED:**
 
-**Next step:** read REPORT_VMSANITIZE_26.md to identify the exact API + argument shape that hits the soft-landing correction layer.
+**Setup:** 2-page (0x8000) parent, filled: page1=0xAA, page2=0xBB.
+
+**Winning call:**
+```
+mach_make_memory_entry_64(task, &size=0x3FFF, offset=0x4001, VM_PROT_RW, &child, parent)
+  → KERN_SUCCESS, size_out=0x4000
+```
+
+**Why this is a bug:**
+- Bounds check uses ORIGINAL size 0x3FFF: `0x4001+0x3FFF = 0x8000 = parent_end` → passes
+- vm_sanitize then corrects `0x3FFF → 0x4000` (rounds up to page)
+- Child entry covers `[parent+0x4001, parent+0x8001)` — **1 byte OOB past parent end**
+- Confirmed: child maps to 0x4000 bytes, last byte readable = oob[0] accessible
+
+**Limitation (current):** The 1-byte OOB is sub-page granular. The extra byte falls on the same 16KB physical page as parent[0x7FFF] — no physical-page escape yet.
+
+**Path to amplification:** Use child entry as a new parent; repeat the call with the same trick. Each stacking step slips the effective range by 1 byte further. After N iterations the entry extends N bytes past the original parent — once N ≥ 16KB page size (0x4000), the child reaches a physical page NOT in the original parent allocation → **physical OOB read/write primitive**.
+
+**Also confirmed (Surface 2):** Sub-page size (even size=1) gets rounded to 0x4000, KERN_SUCCESS, valid entry. Harmless by itself (still within same page) but usable as a building block.
+
+**Next step:** Implement the stacking amplification loop — create child1 from parent, then child2 from child1, etc., measuring how far the OOB extends. Stop before it reaches another allocation to avoid crash.
 
 ---
 
