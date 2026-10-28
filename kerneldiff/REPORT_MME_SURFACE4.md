@@ -145,17 +145,37 @@ q[0x3000] created a COW page local to child1's mapping in our process. The vm_ob
 zero-fill page at offset 0x4000 is unchanged. For anonymous backing, the OOB write
 creates a phantom COW page visible only through that specific mapping.
 
-## Surface 4 Status: LIVE — CONFIRMED OOB CAPABILITY OVERFLOW
+## Surface 4 Status: CLOSED — NOT OOB ON A18 (16KB PAGES)
 
-Static confirmation:
+**CORRECTION 2026-10-28:** Dynamic testing with the native-python MCP tool proves no OOB occurs.
+
+Static analysis confirmed the dangerous code pattern:
   ✓ All parent bounds checks use original size (before correction)
   ✓ vm_sanitize correction happens after all bounds checks
   ✓ Post-BL checks use overwritten registers (x2 = parent_ptr, not child_offset)
-  ✓ No post-correction re-verification of child_offset + corrected_size ≤ parent_end
 
-Unknown (needs dynamic test):
-  ? Does vm_sanitize return corrected size in a way the entry creation code actually uses?
-  ? Does a separate path in the success branch (0x37a0228+) re-check bounds with corrected size?
+Dynamic reality on A18 (16KB pages = 0x4000):
+  ✗ Every tested (offset, size, parent_size) combination produces OOB=NO
+  ✗ Child mapping always covers [base, base+0x4000) regardless of sub-page offset
+  ✗ vm_object has page-granular extent: anonymous allocation rounds up to 16KB minimum
+  ✗ Corrected child size rounds up to exactly one page (0x4000) = same as vm_object extent
+
+Root cause of the non-escape: on 16KB page systems any allocation is a whole number of 16KB
+pages. The corrected child size rounds up to one or more pages, but those pages already exist
+in the vm_object. The child can't reference pages beyond the vm_object's actual extent.
+
+The "escape" arithmetic (offset 0x1000 + corrected_size 0x4000 = end 0x5000 > parent 0x4000)
+was correct on paper but irrelevant: offset 0x1000 is sub-page and rounds DOWN to 0x0000,
+so the child covers [0x0000, 0x4000) — identical to the parent.
+
+The write q[0x3000]=0xAB in the previous test succeeded without fault because
+q[0x3000] = base+0x3000 (in-bounds), not base+0x4000 (OOB). The report's claim of escape
+was based on incorrect offset arithmetic that didn't account for 16KB page rounding.
+
+Additional test — TOCTOU via shadow re-export ne:
+  ✗ COW breaks aliasing: b4[0] via ne stays 0 even after q[0x3000]=0xAB
+  ✗ Named entry refers to underlying vm_object, not to COW shadow pages
+  ✗ Phantom aliasing strategy is invalid for anonymous memory
 
 ---
 

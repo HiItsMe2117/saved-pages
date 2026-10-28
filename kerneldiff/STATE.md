@@ -157,6 +157,33 @@ Key findings:
 
 ## Exploit Surface Research — COMPLETE (5 reports committed)
 
+### mach_make_memory_entry_64 Surfaces — RE-TESTED 2026-10-28 (CLOSED)
+
+**Both Surface 4 and Surface 5 are CLOSED on A18 (iOS 26.6.1, 16KB pages).**
+
+Surface 4 TOCTOU / OOB test results (native-python MCP, ctypes on device):
+1. TOCTOU via shadow re-export: CLOSED
+   - COW breaks aliasing: `ne` port (named entry from shadow VA) maps the underlying
+     vm_object page (zero-fill), NOT the COW shadow page we wrote 0xAB to.
+   - b4[0] remains 0 after q[0x3000]=0xAB. Phantom aliasing is invalid for anonymous memory.
+
+2. OOB child mapping: CLOSED on 16KB pages
+   - Child offset 0x1000 (sub-page) rounds DOWN to 0x0000 by vm_sanitize.
+   - Child mapping covers [base, base+0x4000) = identical to parent.
+   - Tested every escape candidate: all returned OOB=NO.
+   - Root cause: A18 anonymous vm_objects have 16KB-granular extent; corrected child
+     size rounds up to exactly one page = actual vm_object extent. No cross-page escape possible.
+
+   The "escape" arithmetic in REPORT_MME_SURFACE4.md was correct in theory but wrong in
+   practice: on 16KB pages vm_objects are always page-aligned, so no gap opens.
+
+XPC_NAMEDENTRY strategy (REPORT_XPC_NAMEDENTRY.md): INVALID PREMISE
+   Entire strategy was based on phantom aliasing (ne sharing physical pages with q).
+   That aliasing does not exist for anonymous memory. Backboardd / xpc_shmem / CoreAudio
+   targets have no live write window through ne. Strategy needs replacement.
+
+Surface 5 (offset+size overflow): CLOSED — confirmed earlier (architectural, unchanged).
+
 ### Table 0xe = SPTM_NVME (REPORT_TABLE0E.md)
 - Caller: com.apple.iokit.IONVMeFamily (exclusive, 34× string density vs next)
 - Call path: PAC-signed function pointer + disable_preemption wrapper at 0xab4bf78
@@ -208,14 +235,30 @@ Chain to GL2 DMA primitive (needs kernel exec first):
 nvme-sppl downgrade: devices with nvme-sppl but NOT nvme-sptm route through pre-SPTM NVMe path.
 All VIOLATION_NVME_* guards and table-0xe enforcement inactive on such devices.
 
-## Next Steps — Priority
-1. Find kernel code execution primitive (needed to reach NVMe GL2 chain above)
-   Candidates: vm_sanitize gap (REPORT_MME_SANITIZE), retype ep-0 (REPORT_RETYPE_EP0),
-   hibernation write (SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE)
-2. nvme-sppl downgrade path — which devices/configs have sppl but not sptm?
-   Any lab device with modified EDT could test the unguarded NVMe path
-3. Reverse SPTM bootstrap (0x9f904-0x9f90c MSR writes) → find SK entry in SPTM image
-4. Investigate SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path)
+## Next Steps — Priority (updated 2026-10-28)
+
+**mach_make_memory_entry surfaces are fully closed on A18.** Pivot to kernel exec candidates.
+
+1. vm_sanitize soft-landing — STILL WORTH INVESTIGATING (different angle)
+   The 43 VM APIs with soft-landing in 26.6.1 correct bad inputs silently. Surface 4 didn't
+   pan out because the correction doesn't escape page-granular bounds. But OTHER APIs in the
+   set might use the corrected value in a way that creates a security problem unrelated to OOB.
+   Candidate: any API where corrected_size > original_size leads to a kernel allocation or
+   copy that uses the corrected value while the caller's buffer is sized to original_size.
+   → REPORT_VMSANITIZE_26.md lists all 43 APIs; needs a second pass with this lens.
+
+2. retype ep-0 (REPORT_RETYPE_EP0) — HIGH VALUE
+   New PAC-indirect table 9 ep0 absent in 26.6.1. Retype is the crown jewel: type confusion
+   between kernel/RO/user/GPU/secure memory. Investigate call path and reach.
+
+3. SPTM_HIB_ENDPOINTID_IOFILTER_PROTECTED_WRITE (hibernation write path) — UNINVESTIGATED
+   This endpoint writes to iofilter-protected memory. If reachable from userspace (via
+   IOHibernateSystemSleep or similar) with partially-controlled arguments, could be a path
+   to kernel memory write without full kernel exec.
+
+4. nvme-sppl downgrade path
+   Devices with sppl but not sptm bypass all VIOLATION_NVME_* guards. Which production
+   devices/configs qualify? Check EDT property presence across device tree variants.
 
 ## Files on disk (NOT in git)
 - sptm_26.6.1.bin (1.09MB) — SPTM binary iOS 26.6.1
