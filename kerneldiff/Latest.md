@@ -151,7 +151,15 @@ Writing to the shadow buffer BEFORE calling MMME64 triggers copy-on-write. If yo
 
 **Fix:** Write to the buffer first, THEN create the named entry with plain `permission=3` (no `MAP_MEM_VM_SHARE`) to lock the COW'd page into the entry. Then the alias works as expected.
 
-**Result:** Unknown — session was still running at time of screenshot capture.
+**Probe results (2026-10-29):**
+- Connection to `com.apple.mediaserverd` from sandbox: **SUCCESS** (conn non-NULL)
+- `xpc_shmem_create` on our aliased buffer: **SUCCESS** (shmem object non-NULL)
+- Service received message and replied: **YES** (non-NULL reply, not connection-refused)
+- Reply type: `0x203044698` (unknown private type, NOT `XPC_TYPE_ERROR` or `XPC_TYPE_DICT`)
+- Reply has 1 key: `XPCErrorDescription` — the service rejected the unknown message format, not the connection itself
+- **Conclusion:** XPC channel is open from sandbox. The service expects a specific protocol message, not a bare `data: shmem` key. We need the correct message format for mediaserverd's shmem-based audio buffer operations.
+
+**Next step for Surface C:** Reverse the XPC message format mediaserverd expects for its audio/shmem protocol. Candidates: look at CoreMedia/AudioSession framework source, or sniff the XPC traffic from a real audio session (would need a device with jailbreak to sniff).
 
 Other target: `com.apple.coremedia.remotepipeline`
 
