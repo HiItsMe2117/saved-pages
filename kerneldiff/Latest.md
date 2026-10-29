@@ -117,23 +117,29 @@ mach_make_memory_entry_64(task, &size=0x3FFF, offset=0x4001, VM_PROT_RW, &child,
 - Send size: 104 bytes, receive size: 108 bytes
 - IODataQueue pages don't appear as `shared=True` in vm_region after ScheduleWithRunLoop (may use IOSurface or different mechanism)
 
-**BLOCKER:** Exact MIG argument layout of `io_hideventsystem_open` unknown.
-**NEXT STEP:** Disassemble `io_hideventsystem_open` from the extracted IOKit binary.
+**UPDATE (2026-10-29 — session interrupted mid-probe, captured from screenshot):**
 
-```bash
-# Pull from device:
-scp -P 10022 root@localhost:/System/Library/Frameworks/IOKit.framework/IOKit ./IOKit_ios
-# Disassemble:
-jtool2 -d io_hideventsystem_open ./IOKit_ios
-# or: otool -tv ./IOKit_ios | grep -A 80 "io_hideventsystem_open:"
-```
+`io_hideventsystem_open` does NOT need to be called directly. `IOHIDEventSystemClientCreate` (type=Monitor=1) + `IOHIDEventSystemClientScheduleWithRunLoop` triggers it internally via ObjC dispatch. This unblocks the attack — no MIG layout needed.
 
-Need from disassembly:
+**Findings from interrupted probe:**
+- `IOHIDEventSystemClientCreate` works from sandbox, memory cost ~2.7 MB
+- After activation (ScheduleWithRunLoop + CFRunLoopRunInMode 2s), two port candidates in struct:
+  - `+0x20 = 0x209e3` — **connection port** (large port name → allocated after open, likely MIG conn)
+  - `+0x30 = 0x291`  — **service port** (small → allocated early via bootstrap_look_up)
+- Memory cost for activation: ~8.1 MB (higher than expected; plan for 10 MB budget per probe)
+
+**NEXT STEP (Ian Beer direction — ready to run when MCP back up):**
+Scan full struct for ALL valid port rights before/after activation. For any new SEND rights that appeared (backboardd reply), try `mach_vm_map(..., port, ...)` to check if they're named entries mapping backboardd's IODataQueue. If mappable:
+- Read `dataSize` (offset 0), `head` (+4), `tail` (+8) — these are the IODataQueue cursor fields
+- Write `head = dataSize + 1` → next dequeue in backboardd reads 1 byte past the ring buffer → heap OOB read
+- Write `tail = dataSize + X` + fill data → enqueue in backboardd triggers OOB write
+
+**BLOCKER (original, now lower priority):** MIG layout of `io_hideventsystem_open` — only needed if the ObjC wrapper path doesn't surface a named entry port.
+
+Need from disassembly (still useful for fallback):
 1. Arg count before `bl mach_msg`
 2. Whether it sends a named entry port (port descriptor) or OOL memory
 3. Whether the reply returns a named entry to the client
-
-**Alternative (Ian Beer 2018 direction):** The server may send its own named entry TO us in the reply. In that case: map the server's named entry, overwrite head/tail directly, trigger OOB write in backboardd. No need to substitute our own `ne`.
 
 ---
 
@@ -226,10 +232,20 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-1. **Surface C result** — check if XPC `ne` substitution to `com.apple.mediaserverd` succeeded. If yes: observe what the service does with the mapped region.
-2. **Surface 4 stacking amplification** — use child entry as parent for next call; repeat until OOB reaches a page boundary (~0x4000 stacking iterations). Physical OOB primitive.
-3. **Disassemble `io_hideventsystem_open`** (needs Mac) → unblock Surface B backboardd path
-4. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with custom timeString including seconds
+**← RESUME HERE →**
+1. **Surface B port scan** — MCP was down mid-probe. When native_python MCP is back:
+   - Create IOHIDEventSystemClient (Monitor), scan struct for all port rights before/after activation
+   - For any new SEND rights (backboardd reply ports): try `mach_vm_map` to check if named entry
+   - If maps: forge IODataQueue cursors (head=dataSize+1 → OOB dequeue in backboardd)
+   - Probe script ready in conversation context
+
+2. **Surface C / audiohald** — XPC ne substitution to `com.apple.audio.audiohald`:
+   - `com.apple.mediaserverd` probe done (channel open, wrong protocol)
+   - Next: connect to audiohald, send named entry as input ring buffer, confirm it maps
+
+3. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
+
+4. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
 
 ---
 
