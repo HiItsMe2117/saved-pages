@@ -159,9 +159,20 @@ Writing to the shadow buffer BEFORE calling MMME64 triggers copy-on-write. If yo
 - Reply has 1 key: `XPCErrorDescription` — the service rejected the unknown message format, not the connection itself
 - **Conclusion:** XPC channel is open from sandbox. The service expects a specific protocol message, not a bare `data: shmem` key. We need the correct message format for mediaserverd's shmem-based audio buffer operations.
 
-**Next step for Surface C:** Reverse the XPC message format mediaserverd expects for its audio/shmem protocol. Candidates: look at CoreMedia/AudioSession framework source, or sniff the XPC traffic from a real audio session (would need a device with jailbreak to sniff).
+**Protocol research findings (2026-10-29):**
+- `mediaserverd` binary is dyld-cache-only — no on-disk binary, can't do string search without Mac
+- ObjC runtime introspection found: **`_AFAudioPowerXPCSharedMemory`** (`initWithXPCObject:`) — AudioFoundation wrapper that receives an XPC shmem from a service. Prefix "AF" = AudioFoundation.
+- Also found: `PLXPCShMemData` (`initWithXPCShmem:length:`) — Photos library receives shmem via XPC
+- `com.apple.mediaserverd` not in any launchd plist — likely an alias or renamed endpoint
 
-Other target: `com.apple.coremedia.remotepipeline`
+**Better target: `com.apple.audio.audiohald`**
+From REPORT_XPC_NAMEDENTRY.md: CoreAudio shares an audio ring buffer with audiohald. The ring buffer tracks read/write cursors in the shared region (IODataQueue pattern). The CLIENT provides its input ring buffer (named entry), the server provides the output ring. Cursors in the shared region → if we forge them after mapping, audiohald reads outside the buffer → heap corruption in audiohald.
+
+No entitlement needed for audio client role. `_AFAudioPowerXPCSharedMemory.initWithXPCObject:` confirms the XPC shmem path is active in the audio stack.
+
+**Next step:** Probe `com.apple.audio.audiohald` — connect, send our named entry as the input ring buffer, confirm it gets mapped.
+
+Other target: `com.apple.coremedia.remotepipeline`, `com.apple.coremedia.mediaplaybackd.bytestream.xpc`
 
 ---
 
