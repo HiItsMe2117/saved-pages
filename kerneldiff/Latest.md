@@ -43,7 +43,9 @@ Key: **26.6.1 is the exploit target**. 27.0.1 diffs reveal what's open.
 
 | Primitive | Status | Notes |
 |---|---|---|
-| `mach_make_memory_entry_64` + `mach_vm_map` phantom alias | **CONFIRMED** | Two VAs share one physical page; write at VA1 visible at VA2. Prior session. |
+| `mach_make_memory_entry_64` + `mach_vm_map` phantom alias | **CONFIRMED** | Two VAs share one physical page; write at VA1 visible at VA2. **Requires `MAP_MEM_VM_SHARE` flag (`permission \| 0x10000000`)** — without it, MMME64 creates a copy, not an alias. |
+| Phantom alias via secondary re-export | **CONFIRMED** | Creating a named entry from a mapped view of a named entry also aliases. |
+| Full OOB chain phantom aliasing | **CONFIRMED** | Phantom alias works through the Surface 4 OOB named entry path. |
 | CFPreferences cross-domain write | **CONFIRMED** | Any app can write to any domain (e.g. `com.apple.springboard`). Requires respring to take effect. |
 | Darwin `notify_post` | **CONFIRMED** | No restriction on name; no sandbox block. |
 | IOHIDEventSystemClient connect (61 services) | **CONFIRMED** | `com.apple.iohideventsystem` reachable from sandbox. |
@@ -137,13 +139,21 @@ Need from disassembly:
 
 ### Surface C — XPC xpc_shmem_t substitution (HIGH)
 
-**Status:** Plan documented in REPORT_XPC_NAMEDENTRY.md. Not yet probed dynamically.
+**Status:** Active probe in progress (2026-10-29). XPC connection to `com.apple.mediaserverd` attempted with our named entry as the shmem backing.
 
 - `xpc_shmem_create(addr, size)` → named entry port wrapped in XPC dict
 - Receiving service: `xpc_shmem_map(shmem, &ptr)` → `mach_vm_map(..., named_entry_port, ...)`
-- Substitute our Surface-4 `ne` → service maps our shadow page → TOCTOU
+- Substitute our Surface-4 `ne` (or phantom alias `ne`) → service maps our shadow page → TOCTOU
+- Target confirmed reachable: `com.apple.mediaserverd`
 
-Targets: `com.apple.mediaserverd`, `com.apple.coremedia.remotepipeline`
+**COW gotcha (important for ne construction):**
+Writing to the shadow buffer BEFORE calling MMME64 triggers copy-on-write. If you then use `MAP_MEM_VM_SHARE` to export a named entry, it re-exports the pre-COW physical page (the original clean page) — your write is not visible.
+
+**Fix:** Write to the buffer first, THEN create the named entry with plain `permission=3` (no `MAP_MEM_VM_SHARE`) to lock the COW'd page into the entry. Then the alias works as expected.
+
+**Result:** Unknown — session was still running at time of screenshot capture.
+
+Other target: `com.apple.coremedia.remotepipeline`
 
 ---
 
@@ -197,11 +207,10 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-1. **Disassemble `io_hideventsystem_open`** (needs Mac) → unblock Surface B backboardd path
-2. **Probe Surface A vm_sanitize** — `mach_make_memory_entry_64` with offset+size wrap on 26.6.1
-3. **Verify SpringBoard CFPreferences key name** — grep SpringBoard binary strings for clock/seconds
-4. **Surface C xpc_shmem** — craft XPC message with `ne` substitution to `com.apple.mediaserverd`
-5. **Respring** to test CFPreferences status bar seconds (need correct key name first)
+1. **Surface C result** — check if XPC `ne` substitution to `com.apple.mediaserverd` succeeded. If yes: observe what the service does with the mapped region.
+2. **Surface 4 stacking amplification** — use child entry as parent for next call; repeat until OOB reaches a page boundary (~0x4000 stacking iterations). Physical OOB primitive.
+3. **Disassemble `io_hideventsystem_open`** (needs Mac) → unblock Surface B backboardd path
+4. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with custom timeString including seconds
 
 ---
 
