@@ -190,12 +190,31 @@ Deep read of the page-aligned MUTX object (512 bytes):
 
 **Key open question:** The raw IODataQueue memory (head=0, tail=0, entries[]) was NOT found as a heap pointer in the struct scan. The queue backing is likely associated with a Mach named-entry port in our task namespace.
 
+**Probe results (2026-10-30 — this session):**
+
+Port scan approach (type-based):
+- Scanned for IKOT_NAMED_ENTRY with type=0x1A → 0 results (wrong constant)
+- Scanned for type=0x1C → 1 new port (`0x293fb` in run 1, `0x29603` in run 2)
+- Run 1 (from screenshot, previous Claude instance): port `0x293fb` mach_vm_map **SUCCESS**, layout `{queueSize=0x8000, head=0x0, tail=0x0, reserved=0x0}` — **IOSharedDataQueue confirmed**. Forge was in progress when user interrupted.
+- Run 2 (current): port `0x29603` (same type 0x1C) mach_vm_map **FAILED** kr=4 (KERN_INVALID_RIGHT). Cause unclear — may be protection mismatch or right type (send-once vs send).
+- After 5+ activation calls the MCP Python process became unresponsive (memory at ~1700 MB).
+
+**IKOT type 0x1C on iOS 26.6.1 is the queue named entry type** (not 0x1A). Classic XNU constant shifted by 1 or more — does not match older header values.
+
+**IOSharedDataQueue header layout (from successful map):**
+- +0: `queueSize` (u32) = 0x8000 = 32768 bytes
+- +4: `head` (u32) = 0 (consumer position)
+- +8: `tail` (u32) = 0 (producer position)
+- +12: `reserved` (u32) = 0
+- This is IOSharedDataQueue (NOT classic IODataQueue — different header order)
+
 **RESUME POINT FOR NEXT SESSION:**
-1. Scan Mach port namespace after activation for `IKOT_NAMED_ENTRY` (type=0x1A) ports — use `mach_port_kobject(task, port, &type, &addr)` on each name in our namespace
-2. The named-entry port that references ~8360 bytes of heap = the queue forging target
-3. Once found: write forged `head=0, tail=0x7FFFFFFF` at byte offset 0-7 of the backing buffer, then call ScheduleWithRunLoop — observe if backboardd crashes (OOB confirmed) or behaves abnormally
-4. Mac terminal (if MCP reconnected): jtool2 on stub at 0x1ae26ada4 for descriptor layout of io_hideventsystem_open
-5. Budget ≤ 12 MB per probe; start fresh session (no prior activations accumulated; memory ~1600 MB at session end is too tight)
+1. **Restart MCP and clear memory first** — device accumulated ~40 MB from multiple activations; MCP process was unresponsive at session end
+2. Fresh run: scan new port names (no kobject filter needed), try `mach_vm_map` on each with **both RW (prot=3) and R-only (prot=1)** — the successful run used prot=3, but protection may vary
+3. Once mapped: write `tail = 0xFFFFFFF8` at mapped_va+8 (tail is at IOSharedDataQueue +8, NOT +4)
+4. Re-trigger (ScheduleWithRunLoop 2s) — backboardd enqueues next HID event, `tail+8` wraps to 0 in u32 → passes bounds check → memcpy to `data[0xFFFFFFF8]` → OOB heap write
+5. Mac terminal (if available): jtool2 on IOKit framework binary to confirm `_dataQueue` offset in IOHIDQueueClient and exact protection flags on the named entry
+6. **Budget ≤ 8 MB total; do everything in ONE MCP call — no multi-call accumulation**
 
 ---
 
