@@ -208,13 +208,20 @@ Port scan approach (type-based):
 - +12: `reserved` (u32) = 0
 - This is IOSharedDataQueue (NOT classic IODataQueue — different header order)
 
-**RESUME POINT FOR NEXT SESSION:**
-1. **Restart MCP and clear memory first** — device accumulated ~40 MB from multiple activations; MCP process was unresponsive at session end
-2. Fresh run: scan new port names (no kobject filter needed), try `mach_vm_map` on each with **both RW (prot=3) and R-only (prot=1)** — the successful run used prot=3, but protection may vary
-3. Once mapped: write `tail = 0xFFFFFFF8` at mapped_va+8 (tail is at IOSharedDataQueue +8, NOT +4)
-4. Re-trigger (ScheduleWithRunLoop 2s) — backboardd enqueues next HID event, `tail+8` wraps to 0 in u32 → passes bounds check → memcpy to `data[0xFFFFFFF8]` → OOB heap write
-5. Mac terminal (if available): jtool2 on IOKit framework binary to confirm `_dataQueue` offset in IOHIDQueueClient and exact protection flags on the named entry
-6. **Budget ≤ 8 MB total; do everything in ONE MCP call — no multi-call accumulation**
+**CLOSED — queue is IOCircularDataQueue, not IODataQueue (confirmed 2026-10-30 via Mac terminal + otool on device IOKit binary):**
+
+The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOKit`) shows:
+- `IOHIDEventSystemClientScheduleWithRunLoop` calls `IOCircularDataQueueCreateWithConnection`
+- `CreateWithConnection` calls `_io_connect_map_shared_memory("IOCircularQueueDescription")` — kernel creates the shared memory and maps it into our address space; we do NOT provide the queue backing
+- `Enqueue` bounds check: `shared_mem + index * slot_stride + 0x20 < shared_mem + queue_handle[0x20]` — uses backboardd's LOCAL field, NOT a value from shared memory → forge of write_head does not bypass the check
+- PAC-authenticated shared memory pointer at `queue_handle + 0x10` (key `0xaa79`)
+- Atomic CAS (`caspal`) on `shared_mem[0x10:0x18]` for thread safety
+
+**Port scan findings explained:** Queue mapped via `io_connect_map_shared_memory`, not a named entry port in our namespace. All 6 new ports after activation returned errors because none are named-entry memory objects.
+
+**Residual primitive:** TOCTOU on reader side — after backboardd writes entry, `[entry+0x08]` holds `(slot_index | entry_size)` — we can race to inflate `entry_size` before `GetNext` memcpy → OOB read in our own process = ASLR bypass (info-leak), not code exec in backboardd.
+
+**Surface B is effectively closed for the direct backboardd crash path.** Pivot to Surface C (audiohald XPC) which still allows us to provide our own memory.
 
 ---
 
