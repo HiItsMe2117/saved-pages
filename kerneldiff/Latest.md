@@ -168,14 +168,34 @@ Calling the stub with x3=0 (NULL) **crashes the process** (SIGBUS/SIGSEGV) — n
 
 **Why the crash happens:** Unknown — fn_124 doesn't dereference x3, and fn_172 worked fine in isolation. The crash likely comes from the target function fn_124 jumps to (which we haven't read) OR from the mach_msg call with malformed descriptors. The BL at +124 → GOT stub → real function: that real function might dereference x3/x5. **Mac terminal tool not available this session (MCP disconnected)** — can't jtool2 to find the real function target.
 
-**RESUME POINT FOR NEXT SESSION:**
-1. Reconnect use-mac-terminal MCP first
-2. jtool2 disasm on IOKit stub at 0x1ae26ada4 (256 bytes) for full decode
-3. Decode ADRP x16 at 0x1b0feb3e0 to find what fn_124 actually calls (the real function after GOT lookup)
-4. Safe on-device alternative: pass x3=mapped_zeroed_page (not NULL) to see if crash disappears → confirms x3 dereference; if it still crashes → problem is elsewhere
-5. Check free -m first; budget 10 MB per probe
-
 **msgh_id = 71** is confirmed by CMP at stub+272 (checks reply_id == 71; request_id = reply_id for this MIG family).
+
+**Direct mach_msg to `com.apple.iohideventsystem` → CRASH (2026-10-30):** Even a simple 28-byte non-complex message with msgh_id=71 terminates the process. The service enforces termination on unauthorized senders. Only the ObjC library path (ScheduleWithRunLoop) is usable.
+
+**Post-activation struct scan (2026-10-30 deep probe):**
+
+Three 'MUTX'-magic ObjC objects appear after activation:
+- `struct+0x0040` → heap ptr (not page-aligned), `'MUTX'` at offset 16, capacity=8360 at offset 28
+- `struct+0x0120` → heap ptr (not page-aligned), `'MUTX'` at offset 16, capacity=8360 at offset 28
+- **`struct+0x0180` → page-aligned heap ptr, `'MUTX'` at offset 16, capacity=8360 at offset 28**
+
+Deep read of the page-aligned MUTX object (512 bytes):
+- isa at +0x00 (class = IOHIDQueueClient or similar)
+- `'MUTX'` magic at offsets 0x10, 0x24, 0x48, 0x4c — four embedded `OS_unfair_lock` sites
+- capacity = 8360 (0x20A8) at offset 0x1C
+- 0xFFFFFFFF sentinel pair at offsets 0x38-0x3F
+- PAC-signed kernel pointer at offset 0x40 (= 0xFFFFFFFEF8187FEF) — backboardd-side object, not directly usable
+- Inner pointer at offset 0x150 = 0x101000000 → confirmed to be ARM64 executable code (NOT queue data)
+- Bytes 0x60-0x14F: entirely zeroed
+
+**Key open question:** The raw IODataQueue memory (head=0, tail=0, entries[]) was NOT found as a heap pointer in the struct scan. The queue backing is likely associated with a Mach named-entry port in our task namespace.
+
+**RESUME POINT FOR NEXT SESSION:**
+1. Scan Mach port namespace after activation for `IKOT_NAMED_ENTRY` (type=0x1A) ports — use `mach_port_kobject(task, port, &type, &addr)` on each name in our namespace
+2. The named-entry port that references ~8360 bytes of heap = the queue forging target
+3. Once found: write forged `head=0, tail=0x7FFFFFFF` at byte offset 0-7 of the backing buffer, then call ScheduleWithRunLoop — observe if backboardd crashes (OOB confirmed) or behaves abnormally
+4. Mac terminal (if MCP reconnected): jtool2 on stub at 0x1ae26ada4 for descriptor layout of io_hideventsystem_open
+5. Budget ≤ 12 MB per probe; start fresh session (no prior activations accumulated; memory ~1600 MB at session end is too tight)
 
 ---
 
