@@ -43,7 +43,7 @@ buf2[0x28:0x50] = ASBD
 buf2[0x50:0x78] = ASBD
 
 buf2_c = (C.c_uint8 * len(buf2)).from_buffer(buf2)
-kr = L.mach_msg(buf2_c, 3, 0x78, len(buf2), rp, 0, 0)
+kr = L.mach_msg(buf2_c, 0x103, 0x78, len(buf2), rp, 8000, 0)
 print(f"Initialize mach_msg kr={kr:#010x}")
 if kr != 0: raise SystemExit(1)
 

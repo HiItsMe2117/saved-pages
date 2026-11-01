@@ -403,14 +403,27 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 **← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
 
-1. **Surface C MIG probe (AURemoteIOServer)** — FIXED, READY TO RUN:
-   - Root cause found: `req[0x38]=0` was triggering `cbz w28, "!ses"` error + a-Shell OOM on server launch
-   - Fix applied: `req[0x38]=1`, `MACH_RCV_TIMEOUT=5s` in `kerneldiff/surface_c_probe_a.py`
-   - **Run `surface_c_probe_a.py` from a-Shell** (restart a-Shell first for memory < 1250 MB)
-   - `surface_c_probe_a.py` outputs `nc_hndl`; hardcode it in `surface_c_probe_b.py`, then run that
-   - Key observation to make: does Stage B OOL[0].data[0] == 0xAB? (confirms ne used as ring buffer)
-   - If probe_a returns ret_code≠0: print the ret code and check below error table
-   - If probe_b gives OOL[0].size < 0x1000: ring buffer may be too small for shadow page → try different ASBD
+1. **Surface C MIG probe (AURemoteIOServer)** — probe_a still crashing (OOM from server launch):
+
+   **Root cause of hard crash (2026-11-01):** `bootstrap_look_up("com.apple.audio.AURemoteIOServer")`
+   triggers launchd to launch the server process if it isn't already running. The server startup spike
+   pushes total system RAM over the iOS kill threshold (~1450 MB), and iOS kills PocketCode.
+
+   **Fix applied in this session:**
+   - probe_a: added `host_statistics64` memory gate (bails if free < 150 MB) before bootstrap_look_up
+   - probe_a: removed unnecessary plain_ne sanity check (reduces work before the critical path)
+   - probe_b: added `MACH_RCV_TIMEOUT=8s` to Initialize mach_msg (was timeout=0 → could hang)
+
+   **Required user action before next run:**
+   1. **Play a short audio clip** on the iPhone (any app). This pre-launches AURemoteIOServer so
+      our probe hits an already-running server — no memory spike on bootstrap_look_up.
+   2. Stay in PocketCode, run probe_a immediately after (don't let audio app linger in foreground).
+   3. Watch for `free_mb=` in output. If < 150, it aborts cleanly — close other apps and retry.
+
+   **Then run:**
+   - `surface_c_probe_a.py` → outputs `nc_hndl`
+   - Hardcode `nc_hndl` in `surface_c_probe_b.py`, run that
+   - Key check: `OOL[0].data[0] == 0xAB`? → server used our shadow ne as ring buffer
 
 2. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
 
