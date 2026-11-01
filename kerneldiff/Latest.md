@@ -314,13 +314,37 @@ AQMESession gets x4=req[0x38] (a u32 inline arg). The named entry port is used s
 The attack may be: server calls `mach_vm_map(our_ne)` during Initialize to fill OOL[0..2] → OOB.
 This is what Stage 5 of the probe verifies (compare OOL addresses to shadow_va).
 
+**ROOT CAUSE OF HANG/CRASH (found 2026-11-01, static analysis):**
+
+`req[0x38]` (w28 = "session personality" arg to `AQMESession`) must be **non-zero**:
+```
+_AUIOServer_NewClient (0x1bc343718):  cbz w28, 0x1bc3439a8   # "!ses" = unspecified session
+```
+When w28=0:
+- Server sets error code 0x21736573 (`"!ses"`) but does NOT update `reply[0x4]` (msgh_size)
+- `_AURemoteIO_server` pre-initializes reply[0x4]=0x24 (36 bytes) before calling `__XNewClient`
+- `__XNewClient` only sets reply[0x4]=0x28 on SUCCESS; error path skips it
+- Reply IS sent (36 bytes), but contains error — caller sees ret≠0 and bails OR server startup OOM
+- a-Shell crash was OOM: server launches fresh, consumes RAM, pushes us over iOS limit at ~1402 MB baseline
+
+**Fix applied (2026-11-01, `surface_c_probe_a.py`):**
+- `req[0x34]=0` (client_type=standard, no entitlement needed)
+- `req[0x38]=1` (session_id=1, any non-zero → passes cbz, creates AQMESession)
+- `mach_msg` options: `0x103` (SEND|RCV|TIMEOUT), timeout=5000ms (was 0 = infinite)
+
+**What happens with non-zero session_id (traced from disasm):**
+1. `AQMESession(personality=1, pid=caller_pid)` created at sp+0x90 ← server-side session
+2. `operator new(0x578)` allocates IONodeClient object at x25
+3. `ne_port` (our shadow ne) → stored at `IONodeClient[0xc]`
+4. `AT::SessionFacade::global()` vtable[0x108] → registers session
+5. Returns session_handle in reply[0x24]
+
+**Probe scripts:** `surface_c_probe_a.py` + `surface_c_probe_b.py` (two-stage, split for memory).
+Stage A: shadow ne + NewClient → nc_hndl. Stage B: Initialize with nc_hndl → parse OOL descriptors.
+
 **Device probe (service accessible, confirmed earlier session):**
 - `com.apple.audio.AURemoteIOServer`: `bootstrap_look_up` kr=0x0 ✓
 - `com.apple.audio.SystemSoundServer-iOS`: kr=0x0 ✓ (backup target)
-
-**Probe script:** `kerneldiff/surface_c_probe.py` — fully rewritten with raw `mach_msg` (no XPC).
-Runs all 5 stages: shadow ne → lookup → NewClient → Initialize → parse OOL descriptors.
-Run via `mcp__native_python__run_native_python` with the file contents.
 
 **Backup target if AURemoteIOServer is too hardened:**
 `com.apple.audio.SystemSoundServer-iOS` — also kr=0x0, likely simpler protocol
@@ -379,11 +403,14 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 **← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
 
-1. **Surface C MIG probe (AURemoteIOServer)** — READY TO RUN:
-   - `kerneldiff/surface_c_probe.py` is complete with confirmed msg_ids (0x157c1, 0x157c3)
-   - Run via `mcp__native_python__run_native_python` (fresh session for low memory)
-   - Key observation to make: do OOL descriptor addresses overlap with shadow_va? Is ne used as ring buffer source?
-   - If Initialize fails (ret_code≠0): check if session_handle must be set as a different inline field
+1. **Surface C MIG probe (AURemoteIOServer)** — FIXED, READY TO RUN:
+   - Root cause found: `req[0x38]=0` was triggering `cbz w28, "!ses"` error + a-Shell OOM on server launch
+   - Fix applied: `req[0x38]=1`, `MACH_RCV_TIMEOUT=5s` in `kerneldiff/surface_c_probe_a.py`
+   - **Run `surface_c_probe_a.py` from a-Shell** (restart a-Shell first for memory < 1250 MB)
+   - `surface_c_probe_a.py` outputs `nc_hndl`; hardcode it in `surface_c_probe_b.py`, then run that
+   - Key observation to make: does Stage B OOL[0].data[0] == 0xAB? (confirms ne used as ring buffer)
+   - If probe_a returns ret_code≠0: print the ret code and check below error table
+   - If probe_b gives OOL[0].size < 0x1000: ring buffer may be too small for shadow page → try different ASBD
 
 2. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
 

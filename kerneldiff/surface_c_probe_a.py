@@ -81,6 +81,8 @@ def send_new_client(ne_port, label):
     struct.pack_into('<IIIIII', buf, 0x00, CS_BITS, 0x3c, svc.value, rp, 0, 0x157c1)
     struct.pack_into('<I', buf, 0x18, 1)
     struct.pack_into('<IIHBB', buf, 0x1c, ne_port, 0, 0, 17, 0)
+    # req[0x34]=client_type=0 (standard), req[0x38]=session_id=1 (must be non-zero)
+    struct.pack_into('<II', buf, 0x34, 0, 1)
     buf_c = (C.c_uint8 * len(buf)).from_buffer(buf)
     print(f"[{label}] sending NewClient ne={ne_port} ...")
     kr = L.mach_msg(buf_c, MSG_OPT, 0x3c, len(buf), rp, TIMEOUT_MS, 0)
