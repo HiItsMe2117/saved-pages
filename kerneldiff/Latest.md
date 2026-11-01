@@ -414,18 +414,25 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
    - probe_a: removed unnecessary plain_ne sanity check (reduces work before the critical path)
    - probe_b: added `MACH_RCV_TIMEOUT=8s` to Initialize mach_msg (was timeout=0 → could hang)
 
-   **Required user action before next run:**
-   1. **Play a short audio clip** on the iPhone (any app). This pre-launches AURemoteIOServer so
-      our probe hits an already-running server — no memory spike on bootstrap_look_up.
-   2. Stay in PocketCode, run probe_a immediately after (don't let audio app linger in foreground).
-   3. Watch for `free_mb=` in output. If < 150, it aborts cleanly — close other apps and retry.
+   **BLOCKED — surface C not runnable at current memory baseline (2026-11-01):**
 
-   **Then run:**
-   - `surface_c_probe_a.py` → outputs `nc_hndl`
-   - Hardcode `nc_hndl` in `surface_c_probe_b.py`, run that
-   - Key check: `OOL[0].data[0] == 0xAB`? → server used our shadow ne as ring buffer
+   Full isolation sequence performed:
+   - `free_mb=495` before bootstrap_look_up → OOM not from pre-lookup pressure ✓
+   - Shadow_ne creation (alloc + parent_ne + child_ne + mach_vm_map) → kr=0 all steps ✓
+   - `bootstrap_look_up` alone → returns kr=0/port immediately; **delayed crash** seconds later
+   - Wrong msg_id (24-byte non-complex, MIG_BAD_ID path, no handler runs) → crash
+   - Conclusion: crash is from **AURemoteIOServer startup** itself, not from message content or syntax
 
-2. **Surface 4 stacking amplification** — use child entry as parent; repeat ~0x4000 times for physical OOB primitive
+   Root cause: snapshot restores kill AURemoteIOServer; bootstrap_look_up re-triggers launchd
+   launch; server initialization spikes the system (audio hardware context + IOKit) faster than
+   jetsam can accommodate at ~1357 MB baseline. `free_count` (what our gate checks) is not the
+   same as iOS jetsam pressure zone metric — 495 MB "free" can still be over the kill threshold.
+
+   **To unblock:** need system baseline ≤ ~1100 MB before bootstrap_look_up. Close all other
+   apps + restart PocketCode cold (no Pandora, no other sessions). Or use SystemSoundServer-iOS
+   (lighter backup target, also kr=0). Alternatively pivot to Surface A — no IPC needed.
+
+2. **Surface A stacking amplification** ← NEXT ACTIVE STEP — use child entry as parent; repeat ~0x4000 times for physical OOB primitive. No IPC, all in-process mach_make_memory_entry_64 calls, already confirmed working.
 
 3. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
 
