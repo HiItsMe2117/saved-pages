@@ -45,7 +45,7 @@ Key: **26.6.1 is the exploit target**. 27.0.1 diffs reveal what's open.
 |---|---|---|
 | `mach_make_memory_entry_64` + `mach_vm_map` phantom alias | **CONFIRMED** | Two VAs share one physical page; write at VA1 visible at VA2. **Requires `MAP_MEM_VM_SHARE` flag (`permission \| 0x10000000`)** — without it, MMME64 creates a copy, not an alias. |
 | Phantom alias via secondary re-export | **CONFIRMED** | Creating a named entry from a mapped view of a named entry also aliases. |
-| Full OOB chain phantom aliasing | **CONFIRMED** | Phantom alias works through the Surface 4 OOB named entry path. |
+| Full OOB chain phantom aliasing | **DISPROVED (2026-11-01)** | The "Surface 4 OOB named entry" was confirmed kr=0 only — data reads conclusively show offset rounds to page boundary; no accessible OOB. Phantom alias works but does NOT cover OOB pages. |
 | CFPreferences cross-domain write | **CONFIRMED** | Any app can write to any domain (e.g. `com.apple.springboard`). Requires respring to take effect. |
 | Darwin `notify_post` | **CONFIRMED** | No restriction on name; no sandbox block. |
 | IOHIDEventSystemClient connect (61 services) | **CONFIRMED** | `com.apple.iohideventsystem` reachable from sandbox. |
@@ -62,38 +62,44 @@ Key: **26.6.1 is the exploit target**. 27.0.1 diffs reveal what's open.
 
 ## Attack Surfaces
 
-### Surface A — vm_sanitize gap (kernel exec path) ← TOP PRIORITY
+### Surface A — vm_sanitize gap (kernel exec path)
 
-**Status:** Static analysis complete (REPORT_VMSANITIZE_26.md, REPORT_MME_SANITIZE.md).
-Dynamic test not yet run.
+**Status:** EMPIRICALLY DISPROVED on iPhone 16 (16K pages) — 2026-11-01.
 
-- `vm_sanitize_telemetry.c` removed from 27.0.1 → the correction layer that clamped bad inputs (offset+size wrap, parent bounds) is absent in 26.6.1
-- **Surface 5** (offset+size wrap): top candidate — call site in TEXT_EXEC at foff=0x3707668
-- **Surface 4** (parent bounds ordering): second candidate
+- `vm_sanitize_telemetry.c` removed from 27.0.1 → the correction layer present in 26.6.1
+- **Static analysis suggested** an OOB via MMME64: offset=0x4001, size_in=0x3FFF on 2-page parent passes bounds check (0x4001+0x3FFF=0x8000≤parent_size), then vm_sanitize rounds size 0x3FFF→0x4000, giving a child that theoretically covers [parent+0x4001, parent+0x8001) — 1 byte OOB.
 
-**Probed 2026-10-28 — SURFACE 4 BUG CONFIRMED:**
+**EMPIRICAL RESULT (2026-11-01, direct data reads):**
 
-**Setup:** 2-page (0x8000) parent, filled: page1=0xAA, page2=0xBB.
+vm_sanitize rounds **BOTH** offset (floor to 16K boundary) AND size (ceil to 16K boundary). It is NOT "size only" correction. Tested exhaustively:
 
-**Winning call:**
+| offset | size_in | Mapped from | data[0] | data[0x3FFF] | OOB? |
+|--------|---------|-------------|---------|--------------|------|
+| 0x4001 | 0x3FFF  | page 1      | 0xBB    | 0xBB         | **NO** — offset rounds to 0x4000 |
+| 0x8001 | 0x3FFF  | page 2      | 0xCC    | 0xCC         | **NO** — offset rounds to 0x8000 |
+| 0x1000 | 0x1001  | page 0      | 0xAA    | 0xAA         | **NO** — offset rounds to 0x0000 |
+| Sub-page offsets (stacking chain × 8 iters) | — | page 0 always | 0xAA | 0xAA | **NO** — offsets never accumulate |
+
+On 16K page devices, `trunc_page(0x4001) = 0x4000` (floor). vm_sanitize effectively does:
 ```
-mach_make_memory_entry_64(task, &size=0x3FFF, offset=0x4001, VM_PROT_RW, &child, parent)
-  → KERN_SUCCESS, size_out=0x4000
+new_offset = trunc_page(old_offset)         // always page-aligned, loses sub-page bits
+new_size   = round_page(old_size + (old_offset - new_offset))  // covers same end byte, rounded up
 ```
+Net result: child always covers exactly [page_floor(offset), page_floor(offset)+new_size) — always within the parent's page boundaries when bounds check passes.
 
-**Why this is a bug:**
-- Bounds check uses ORIGINAL size 0x3FFF: `0x4001+0x3FFF = 0x8000 = parent_end` → passes
-- vm_sanitize then corrects `0x3FFF → 0x4000` (rounds up to page)
-- Child entry covers `[parent+0x4001, parent+0x8001)` — **1 byte OOB past parent end**
-- Confirmed: child maps to 0x4000 bytes, last byte readable = oob[0] accessible
+**"Stacking amplification" also disproved:** Each MMME64 call with sub-page offset (e.g. 0x1000) independently rounds to 0x0000. After 8 stacking iterations with offset=0x1000 each, all children still map to page 0 of the original allocation. Offsets do NOT accumulate byte-by-byte.
 
-**Limitation (current):** The 1-byte OOB is sub-page granular. The extra byte falls on the same 16KB physical page as parent[0x7FFF] — no physical-page escape yet.
+**Confirmed primitives that still work:**
+- MMME64 with any valid page-aligned offset → kr=0 ✓ (expected behavior)
+- sz_out always rounds to 16K ✓
+- mach_vm_map of child_ne → kr=0 ✓
+- MAP_MEM_VM_SHARE alias (phantom alias) ✓
 
-**Path to amplification:** Use child entry as a new parent; repeat the call with the same trick. Each stacking step slips the effective range by 1 byte further. After N iterations the entry extends N bytes past the original parent — once N ≥ 16KB page size (0x4000), the child reaches a physical page NOT in the original parent allocation → **physical OOB read/write primitive**.
+**Root cause of static analysis error:** The XNU diff showed size correction (`0x3FFF → 0x4000`) but the analyst assumed offset was kept exact. On 16K page hardware, offset ALSO gets corrected (floor to page boundary), consuming the sub-page delta and preventing any accessible OOB.
 
-**Also confirmed (Surface 2):** Sub-page size (even size=1) gets rounded to 0x4000, KERN_SUCCESS, valid entry. Harmless by itself (still within same page) but usable as a building block.
+**This surface is CLOSED on 16K page devices.** Might apply on macOS/4K-page targets.
 
-**Next step:** Implement the stacking amplification loop — create child1 from parent, then child2 from child1, etc., measuring how far the OOB extends. Stop before it reaches another allocation to avoid crash.
+**Next candidate for vm_sanitize gaps:** Surface 5 (offset+size wrap-around) — call site in TEXT_EXEC at foff=0x3707668. Needs separate investigation.
 
 ---
 
@@ -309,10 +315,41 @@ The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOK
   - Kernel fills descriptor.address in-place with OUR task's mapped VA on receive
   - OOL[0].size = RemoteIOClient+0x368 (audio ring buffer size)
 
-**CRITICAL: Our shadow ne goes to sp+0x20 in `_AUIOServer_NewClient`, NOT to AQMESession.**
-AQMESession gets x4=req[0x38] (a u32 inline arg). The named entry port is used separately.
-The attack may be: server calls `mach_vm_map(our_ne)` during Initialize to fill OOL[0..2] → OOB.
-This is what Stage 5 of the probe verifies (compare OOL addresses to shadow_va).
+**CORRECTED ATTACK MODEL (2026-11-01 static analysis — deep disassembly):**
+
+Our shadow ne is stored at `IONodeClient+0xc` and is a **control/notification channel** back to our
+process (server sends us hardware-format-change notifications there). It is **NOT** mapped as the
+ring buffer. Full disassembly trace confirms:
+
+1. `_AUIOServer_NewClient` stores our ne at `[IONodeClient+0xc]` then calls `IONodeClientC2()`
+2. `IONodeClientC2` ← `AQIONodeClientC2`: NO write to `[this+0xc]`; ne survives intact
+3. `__XInitialize` → `ConnectToDevice` → `DoPrepareSharedBuffer`:
+   - Calls `IPCAUSharedMemoryBase::InitServer(ASBD, channels=1, maxFrames=0x1000, &ServerToken)`
+   - This creates a **new** allocation, stores token at `IONodeClient+0x118`
+   - Our ne is NEVER passed to `InitServer`
+4. Reply sends 3 OOL regions from the fresh ring buffer (server's memory, not ours)
+5. `SharableMemoryBlock::InitClient` at `IONodeClient+0x190` maps the server's OOL regions
+
+**IONodeClient+0xc role:** control port to our process. Server uses it to notify us of format changes,
+hardware resets, etc. No ring buffer mapping occurs through it.
+
+**NEW ATTACK ANGLE — ASBD integer overflow in `IPCAUSharedMemoryBase::InitClient`:**
+
+`IPCAUSharedMemoryBase::InitClient` (libEmbeddedSystemAUs, 0x23d512984) computes buffer sizes from
+ASBD fields using **32-bit arithmetic**:
+```
+madd w12, w14, w12, w11  ; (num_frames * bytesPerFrame) + 15  — 32-bit, can wrap!
+and  w12, w12, #0xfffffff0
+mul  w12, w12, w13        ; × numChannels                      — 32-bit, second wrap!
+add  x8, x8, x12          ; accumulate → passed to realloc()
+```
+If our ASBD's `mSamplesPerPacket`/`mBytesPerFrame`/`mBytesPerPacket` fields yield large enough
+values at the Initialize → `ChangeHardwareFormats` → `InitClient` path, a 32-bit overflow could
+produce a small `x8` while the actual write window is large → heap OOB write in AURemoteIOServer.
+
+`ChangeHardwareFormats` (0x23d511de4) stores our ASBD's sampleRate at `AURemoteIO+0x2d8/0x2e0`,
+then retrieves AUScope elements and propagates ASBD fields into the `InitClient` computation.
+Next investigation: trace exactly which ASBD fields reach `w12/w14/w13` in `InitClient`.
 
 **ROOT CAUSE OF HANG/CRASH (found 2026-11-01, static analysis):**
 
@@ -403,36 +440,29 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 **← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
 
-1. **Surface C MIG probe (AURemoteIOServer)** — probe_a still crashing (OOM from server launch):
+1. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
-   **Root cause of hard crash (2026-11-01):** `bootstrap_look_up("com.apple.audio.AURemoteIOServer")`
-   triggers launchd to launch the server process if it isn't already running. The server startup spike
-   pushes total system RAM over the iOS kill threshold (~1450 MB), and iOS kills PocketCode.
+   **Attack model revision (2026-11-01 — disassembly of full call chain):**
+   - Our ne at `IONodeClient+0xc` is a **notification port**, not mapped as ring buffer
+   - Server creates its own ring buffer; sends 3 OOL regions in reply
+   - Original attack (shadow ne → server maps it OOB) is INVALID
 
-   **Fix applied in this session:**
-   - probe_a: added `host_statistics64` memory gate (bails if free < 150 MB) before bootstrap_look_up
-   - probe_a: removed unnecessary plain_ne sanity check (reduces work before the critical path)
-   - probe_b: added `MACH_RCV_TIMEOUT=8s` to Initialize mach_msg (was timeout=0 → could hang)
+   **New attack path — ASBD integer overflow via `IPCAUSharedMemoryBase::InitClient`:**
+   `Initialize` message → server `ChangeHardwareFormats` → `InitClient` → 32-bit `madd`/`mul`
+   on ASBD-derived `(frames × bytesPerFrame × channels)`. Overflow → small realloc → heap OOB write.
+   Need to trace which ASBD fields reach the overflow. Next: disassemble the `AUScope::GetElement` →
+   ASBD propagation path in `ChangeHardwareFormats` to find which of our ASBD fields feed `w12/w14`.
 
-   **BLOCKED — surface C not runnable at current memory baseline (2026-11-01):**
+   **BLOCKED — probe not runnable at current memory baseline (2026-11-01):**
+   Root cause: snapshot restores kill AURemoteIOServer; bootstrap_look_up re-triggers launchd launch.
+   Server init spikes system (audio hardware context + IOKit) at ~1357 MB baseline → PocketCode OOM.
 
-   Full isolation sequence performed:
-   - `free_mb=495` before bootstrap_look_up → OOM not from pre-lookup pressure ✓
-   - Shadow_ne creation (alloc + parent_ne + child_ne + mach_vm_map) → kr=0 all steps ✓
-   - `bootstrap_look_up` alone → returns kr=0/port immediately; **delayed crash** seconds later
-   - Wrong msg_id (24-byte non-complex, MIG_BAD_ID path, no handler runs) → crash
-   - Conclusion: crash is from **AURemoteIOServer startup** itself, not from message content or syntax
+   **To unblock:** need system baseline ≤ ~1100 MB. Close all apps + restart PocketCode cold.
+   Or use `SystemSoundServer-iOS` as backup (lighter, also kr=0).
 
-   Root cause: snapshot restores kill AURemoteIOServer; bootstrap_look_up re-triggers launchd
-   launch; server initialization spikes the system (audio hardware context + IOKit) faster than
-   jetsam can accommodate at ~1357 MB baseline. `free_count` (what our gate checks) is not the
-   same as iOS jetsam pressure zone metric — 495 MB "free" can still be over the kill threshold.
+2. **Surface 5 investigation** — offset+size wrap-around call site in TEXT_EXEC at foff=0x3707668. This was the other vm_sanitize gap candidate. Needs fresh disasm + probe.
 
-   **To unblock:** need system baseline ≤ ~1100 MB before bootstrap_look_up. Close all other
-   apps + restart PocketCode cold (no Pandora, no other sessions). Or use SystemSoundServer-iOS
-   (lighter backup target, also kr=0). Alternatively pivot to Surface A — no IPC needed.
-
-2. **Surface A stacking amplification** ← NEXT ACTIVE STEP — use child entry as parent; repeat ~0x4000 times for physical OOB primitive. No IPC, all in-process mach_make_memory_entry_64 calls, already confirmed working.
+3. **IOSurface test** — check if IOSurface.framework is accessible from sandbox; IOSurface cross-process shared memory has historically had exploitable bugs and doesn't require IOKit service opens.
 
 3. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
 
