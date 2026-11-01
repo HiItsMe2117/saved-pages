@@ -447,11 +447,32 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
    - Server creates its own ring buffer; sends 3 OOL regions in reply
    - Original attack (shadow ne → server maps it OOB) is INVALID
 
-   **New attack path — ASBD integer overflow via `IPCAUSharedMemoryBase::InitClient`:**
-   `Initialize` message → server `ChangeHardwareFormats` → `InitClient` → 32-bit `madd`/`mul`
-   on ASBD-derived `(frames × bytesPerFrame × channels)`. Overflow → small realloc → heap OOB write.
-   Need to trace which ASBD fields reach the overflow. Next: disassemble the `AUScope::GetElement` →
-   ASBD propagation path in `ChangeHardwareFormats` to find which of our ASBD fields feed `w12/w14`.
+   **New attack path — ASBD integer overflow (CONFIRMED by disasm, empirical probe PENDING):**
+
+   `ChangeHardwareFormats` calls `IPCAUSharedMemoryBase::InitClient(ASBD2, channels=1, frames=0x1000)`
+   with `frames=0x1000` **hardcoded at BOTH call sites** (0x23d512730, 0x23d512838). ASBD2 comes
+   from our Initialize message at req[0x50]. In `InitClient`:
+
+   ```
+   # No validation of mBytesPerFrame
+   ldr  w12, [element, #0x18]  ; ASBD.mBytesPerFrame  ← OUR FIELD
+   ldr  w14, [shmBlock, #0x58] ; = 0x1000 (hardcoded frames)
+   madd w12, w14, w12, w11     ; (0x1000 × mBytesPerFrame) + 15  — 32-BIT OVERFLOW
+   and  w12, w12, #0xfffffff0
+   mul  w12, w12, w13           ; × mChannelsPerFrame
+   add  x8,  x8,  x12           ; → ClientToken+0xc → realloc()
+   ```
+
+   With `mBytesPerFrame=0xFFF001`:
+   - `(0x1000 × 0xFFF001) + 15` = 0xFFF001000 + 15 → 32-bit = **0x1000** (4 KB allocation!)
+   - Actual ring-buffer write stride = 0x1000 frames × 0xFFF001 bytes/frame = **~16 GB**
+   - Result: **heap OOB write with ~16 GB write window in AURemoteIOServer**
+
+   Probe: `surface_c_probe_b_overflow.py`. Full report: `REPORT_AUREMOTEIO_INTOVERFLOW.md`.
+
+   **Expected observable signals:**
+   - Server crash (SIGSEGV/malloc abort) on Initialize or StartIO → confirms overflow + write
+   - Or: Initialize reply OOL[0].sz == 0x1000 → allocation IS the overflowed size
 
    **BLOCKED — probe not runnable at current memory baseline (2026-11-01):**
    Root cause: snapshot restores kill AURemoteIOServer; bootstrap_look_up re-triggers launchd launch.
