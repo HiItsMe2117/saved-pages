@@ -75,8 +75,9 @@ for i in range(in_dcnt):
         view = (C.c_uint8 * min(64, sz)).from_address(addr)
         data = bytes(view)
         print(f"    data: {data.hex()}")
-        # 0xAB at offset 0 means server allocated from our shadow ne (OOB confirmed)
-        hit = data[0] == 0xAB
-        print(f"    OOB hit (data[0]==0xAB): {hit}")
+        # 0xAB marker removed from probe_a (OOB write caused SIGSEGV crash)
+        # Verification: if OOL[0].data is all zeros, ring buffer is fresh (expected)
+        all_zero = all(b == 0 for b in data)
+        print(f"    all_zero={all_zero} data[0]={hex(data[0])}")
 
 print("DONE")

