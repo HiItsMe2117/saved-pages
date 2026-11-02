@@ -97,6 +97,7 @@ buf = bytearray(0x200)
 struct.pack_into('<IIIIII', buf, 0x00, CS_BITS, 0x3c, svc.value, rp, 0, 0x157c1)
 struct.pack_into('<I', buf, 0x18, 1)  # descriptor_count=1
 struct.pack_into('<IIHBB', buf, 0x1c, shadow_ne.value, 0, 0, 17, 0)  # PORT descriptor, MOVE_SEND
+buf[0x28:0x30] = b'\x00\x00\x00\x00\x01\x00\x00\x00'  # NDR record
 struct.pack_into('<II', buf, 0x34, 0, 1)  # client_type=0, session_id=1 (non-zero!)
 buf_c = (C.c_uint8 * len(buf)).from_buffer(buf)
 print(f"sending NewClient ne={shadow_ne.value} ...")
@@ -106,12 +107,21 @@ if kr != 0:
     print("FAILED - if 0x10004003 (TIMEOUT): server not responding; play audio and retry")
     raise RuntimeError(f"mach_msg NewClient failed: {kr:#010x}")
 
-nc_ret  = struct.unpack_from('<i', buf, 0x20)[0]
-nc_hndl = struct.unpack_from('<I', buf, 0x24)[0]
-print(f"ret={nc_ret:#010x} handle={nc_hndl:#x}")
+reply_bits = struct.unpack_from('<I', buf, 0)[0]
+if reply_bits & COMPLEX:
+    # Complex reply: nc_hndl is returned as a port descriptor at 0x1c
+    nc_hndl = struct.unpack_from('<I', buf, 0x1c)[0]
+    nc_ret = 0
+    print(f"complex reply: nc_hndl={nc_hndl:#x}")
+else:
+    # Simple reply: RetCode at 0x20, nc_hndl at 0x24
+    nc_ret  = struct.unpack_from('<i', buf, 0x20)[0]
+    nc_hndl = struct.unpack_from('<I', buf, 0x24)[0]
+    print(f"simple reply: ret={nc_ret:#010x} nc_hndl={nc_hndl:#x}")
 if nc_ret != 0:
-    print(f"NewClient error: {nc_ret:#010x}")
     raise RuntimeError(f"NewClient returned error: {nc_ret:#010x}")
+if nc_hndl == 0:
+    raise RuntimeError("NewClient returned nc_hndl=0 — session not created")
 
 print(f"nc_hndl = {nc_hndl:#x}")
 _rh_store(nc_hndl=nc_hndl, svc_port=svc.value)
