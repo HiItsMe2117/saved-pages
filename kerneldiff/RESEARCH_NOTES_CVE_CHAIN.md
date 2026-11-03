@@ -457,14 +457,30 @@ The DPB overflow is most exploitable: DPB holds reference frames used for inter-
 An OOB read from DPB → kernel pointer leak (CVE-2026-112466).
 An OOB write to DPB → overwrite adjacent kernel data structures.
 
-### Trigger conditions
+### Trigger conditions — revised (dimension-only path impractical)
 
-For 26.6.1 DPB overflow (HEVC CTU path, profile ≥ 30):
-- `iVar2 × iVar4 × 0x400` where `iVar2 = (h+39)/32`, `iVar4 = (w+39)/32`
-- Overflow at: `iVar2 × iVar4 > 0x3FFFFF` (4,194,303)
-  - Minimum square: `iVar2 = iVar4 ≥ 2049` → `w = h ≥ 65536`
-  - Non-square: `iVar2=4096, iVar4=1025` → `h=131072, w=32768`
-- VideoToolbox dimension limits: need to verify if HEVC level 6.x allows 65536px dimensions
+Pure dimension overflow (CTU path):
+- `iVar2 × iVar4 × 0x400` overflows 32-bit when `iVar2 × iVar4 > 0x3FFFFF`
+- Minimum square dimension: w = h ≈ 65536 pixels — REJECTED by VideoToolbox hardware limits
+
+**Better trigger: NTL (NumberOfTemporalLayers) × DPB frame size**
+
+The DPB buffer allocation is proportional to `frame_unit_size × NTL`. If that product is computed
+in 32-bit arithmetic in 26.6.1 (without the new 27.1 checker guards), then:
+
+For 4K HEVC (3840×2160), CTU-64 path:
+- DPB frame unit ≈ 60 × 34 × 1024 = 2,088,960 bytes
+- `2,088,960 × NTL` overflows 32-bit when **NTL ≥ 2056**
+  - At NTL=2056: wraps to a small positive value → under-allocated DPB → OOB write
+  - At NTL=16462: confirmed safe (no linked-list crash), so this range IS accepted by VT
+
+**Exploitable NTL window: [2056, 16462]**
+- Below 2056: no overflow
+- 2056–16462: DPB overflow (new 5 CVEs) — kernel OOB write
+- 16463+: linked-list crash (CVE-2026-112705) — different code path, 27.0.1 only
+
+This means the 5 new AVE2 CVEs may be triggered at 4K with NTL≈2056, achievable via
+standard VideoToolbox API on 26.6.1.
 
 ### Call path from VideoToolbox to overflow
 
