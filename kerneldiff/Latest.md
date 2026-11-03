@@ -423,9 +423,9 @@ There is NO CFPreferences key for this. The `UIStatusBarShowingClockSeconds` key
 
 ---
 
-### Surface E — AVE2 32-bit DPB buffer-size overflow (LIVE — empirical probe ongoing)
+### Surface E — AVE2 32-bit DPB buffer-size overflow (LIVE — heap groom in progress)
 
-**Status:** Static analysis complete 2026-11-03. Dynamic probe in progress (NTL=2057 pending).
+**Status:** NTL=2057 confirmed fast (0.05s), groom PoC written and partially validated 2026-11-03. Multi-frame OOB trigger needed — fixing now.
 
 **Root cause (26.6.1, `AppleAVE2` kext, offset ~0x28a000–0x28d000 in kernelcache):**
 
@@ -473,11 +473,22 @@ NTL 1500–2056 produce legitimate allocations of ~3–4.3 GB without overflowin
 | 1 | `encode_st=0x0 no_overflow(0x1fe000)` — baseline ✓ |
 | 2000 | `encode_st=0x0 no_overflow(0xf9060000)` — 4.19 GB stall, 15 min, completed |
 | 2056 | STARTING logged at 14:04:05 — not overflow (4.29 GB), force-killed ~5 min later; firmware still running |
-| **2057** | **PENDING** — waiting for firmware to clear NTL=2056 job |
+| **2057** | **FAST** — completed in ~0.05s, `encode_st=0x0 OVERFLOW→0x001ee000` ✓ OOB path confirmed |
 
-Current job (824760D3): NTL=1 STARTING at 14:09:56, blocked on firmware backlog. Memory at 1849 MB.
+**Heap groom findings (2026-11-03, empirical):**
 
-**PoC file:** `kerneldiff/ave2_overflow_poc.py` (v4 — corrected threshold, skip stall zone)
+- **DPB physical address:** `0x10014d54000` — read from AVE2 FwLog syslog (`Phy 0x10014d54000 DART 0x10000280000`)
+- **Actual IOSurface allocation:** 2,031,616 bytes (16KB aligned). Kernel rounds `GROOM_SIZE=2,023,424` up to 0x1F0000. Victim starts 8,192 bytes AFTER DPB's physical end — small gap, but DPB[1] OOB write extends 2,088,960 bytes past DPB base so it covers the victim.
+- **Feeder pattern required:** Old groom order (spray→free half→place victims→trigger) filled ALL holes before encode → DPB went to new memory, no victims adjacent. Fix: free ALL spray first, trigger encode, wait 20ms (DPB claims freed pages), THEN place victims immediately after.
+- **Multi-frame required for OOB:** Frame 0 only writes DPB[0] at offset 0 (in-bounds). Frame 1 writes DPB[1] at offset 2,088,960 > 2,023,424 → first OOB write. Need `NUM_FRAMES ≥ 2`; using 5.
+- **IOSurfaceRelease absent:** Symbol not exported on iOS 26.6.1. Use `CF.CFRelease(surf)` — IOSurfaceRef is CFType-compatible.
+- **VTCompressionSessionInvalidate hangs:** After multi-frame NTL=2057 encode, firmware waits for complete GOP. `Invalidate` blocks indefinitely (MCP timeout). Do NOT call it.
+- **Allocator test:** 10/10 freed IOSurface pages deterministically reused by next allocation (confirmed via KVA tracking). Feeder pattern is reliable.
+- **AVE2 firmware error loop:** After groom v1 (single frame, groom miss), firmware emitted `<decode: bad range for [%p]>` heartbeat errors every 5s for 14+ min — DART mapping corrupted. Required device reboot to clear.
+- **Memory pressure:** PocketCode RSS 1552–1559 MB causes jetsam kill of ResearchHost during spray. Must close all background apps before running groom. Using SPRAY_COUNT=16, VICTIM_COUNT=16 (32 MB peak).
+
+**PoC file:** `kerneldiff/ave2_groom_poc.py` (v4 — feeder pattern, multi-frame, CFRelease, no Invalidate)
+**Ladder file:** `kerneldiff/ave2_overflow_poc.py` (v4 — corrected threshold, skip stall zone)
 
 **CVEs:** CVE-2026-112466/468/469/470/689 (same 32-bit overflow pattern, different buffer size fields)
 
@@ -502,48 +513,24 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 **CRITICAL WARNING:** 27.0.1 added `AVE_Entitlement_Check`. If Apple backports this gate to a 26.6.x point release, the NTL path becomes sandbox-inaccessible. Run the groom PoC before any iOS update.
 
-0. **Surface E — AVE2 heap spray/groom PoC (READY TO WRITE AND RUN)**
+0. **Surface E — AVE2 heap groom PoC (WRITTEN, READY TO RUN)**
 
-   **What we know (2026-11-03 static analysis):**
-   - DPB is IOSurface-backed kernel memory (not firmware-private) — OOB write is kernel-visible ✓
-   - NTL=2057 is the first TRUE overflow: wraps DPB allocation to exactly **2,023,424 bytes (~1.93 MB)**
-   - 27.0.1 patches: `iLayerNum <= 2` cap + new `AVE_CalcBufSizeOfDPB` wrapper + `AVE_Entitlement_Check`
-   - `AVE_CalcBufSizeOfRecon` in 26.6.1 has zero overflow checking
+   **Status:** `ave2_groom_poc.py` v4 written with all corrections (feeder pattern, multi-frame, CFRelease, no Invalidate). Blocked on memory pressure — need background apps closed before submitting.
 
-   **Firmware stall lesson (empirically discovered 2026-11-03):**
-   - NTL 501–2056 request 1–4.29 GB DPB without overflowing 32-bit → firmware stalls 15+ min each
-   - NTL=2057 wraps to ~2 MB → completely different regime (fast crash expected)
-   - AVE2 firmware runs on media coprocessor independent of iOS process lifecycle
-   - Force-quitting RH does NOT reset firmware — need device reboot to clear a stuck encode
-   - **Always start probes on fresh-rebooted device**
+   **To run:** close all background apps → reopen ResearchHost → submit via offload_python with `wait=60`.
 
-   **Concrete heap groom plan:**
-   ```python
-   # 1. Spray: allocate 64 IOSurfaces at exactly the DPB overflow size
-   GROOM_SIZE = 2_023_424  # DPB_unit * 2057 wrapped = (2088960 * 2057) & 0xFFFFFFFF
-   surfs = [IOSurfaceCreate({'IOSurfaceAllocSize': GROOM_SIZE}) for _ in range(64)]
-   
-   # 2. Create holes: free every other one
-   for i in range(0, 64, 2):
-       IOSurfaceRelease(surfs[i])
-       surfs[i] = None
-   
-   # 3. Trigger: run NTL=2057 encode → DPB lands in one of the holes
-   probe_ntl(2057)
-   
-   # 4. Scan: check all surviving IOSurfaces for corrupted alloc size
-   for surf in surfs:
-       if surf and IOSurfaceGetAllocSize(surf) != GROOM_SIZE:
-           print("KERNEL WRITE CONFIRMED", hex(IOSurfaceGetAllocSize(surf)))
-   ```
-   - `IOSurfaceCreate` is sandbox-accessible (confirmed earlier sessions)
-   - `IOSurfaceGetAllocSize()` reads kernel header → corrupted value = confirmed kernel write
-   - Escalation path: replace victim with pipe buffer → corrupt `buf_size` → kernel R/W primitive
+   **Key parameters:** `SPRAY_COUNT=16, VICTIM_COUNT=16, NUM_FRAMES=5, DPB_WAIT_S=0.020, OOB_WAIT_S=12.0`
 
-   **PoC file:** `kerneldiff/ave2_overflow_poc.py` (v4, ladder: [1, 100, 500, 2057, 2100, 2200, 2500])
-   **Next file to write:** `kerneldiff/ave2_groom_poc.py` — spray + groom + NTL=2057 + IOSurface scan
+   **Success signal:** `KERNEL WRITE CONFIRMED` in `AppGroup/Library/ave2_groom_v4.txt`
+   **Failure modes:** groom miss (try more spray), gap too large (try GROOM_SIZE=2_031_616 to match actual alloc), timing (increase DPB_WAIT_S)
 
-   **Run conditions:** fresh reboot, memory < 1400 MB baseline before starting
+   **Escalation path after confirmation:** replace victim IOSurface with pipe buffer → corrupt `buf_size` → kernel R/W primitive via Siguza pipe technique
+
+   **PoC files:**
+   - `kerneldiff/ave2_groom_poc.py` (v4 — feeder+multiframe groom, writes `ave2_groom_v4.txt`)
+   - `kerneldiff/ave2_overflow_poc.py` (v4 — NTL ladder [1, 100, 500, 2057, 2100, 2200, 2500])
+
+   **Run conditions:** fresh reboot, all background apps closed, memory < 1400 MB baseline
 
 1. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
