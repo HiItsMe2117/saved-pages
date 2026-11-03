@@ -339,9 +339,154 @@ frame strides, and 26.6.1 is protected by the NULL guard in the list_head initia
 - `kerneldiff/surface_c_probe_b.py` — legacy single-stage probe (pre-staged version)
 - `rh_run.py` — ResearchHost HTTP client for iPhone-side Python execution
 
+---
+
+## Patch diff — 26.6.1 vs 27.1 AppleAVE2 (2026-11-03)
+
+Analysis of `/Users/codysomerville/Downloads/ios2661/kexts/com.apple.driver.AppleAVE2` vs
+`/Users/codysomerville/Downloads/ios271/kexts/com.apple.driver.AppleAVE2` using PyGhidra:
+
+| Metric | 26.6.1 | 27.1 |
+|--------|--------|------|
+| Binary size | 2,692,608 bytes | 3,020,688 bytes (+328 KB) |
+| Functions (Ghidra) | 2,819 | 3,644 (+825) |
+| `__TEXT_EXEC.__text` size | 0x1a0ccc | 0x1d0028 (+190 KB) |
+| `__TEXT_EXEC.__auth_stubs` | 0 | 0x7b0 (246 stubs added) |
+| `overflow` string functions | 84 | 50 |
+| `stride` string functions | 18 | 14 |
+| `temporalLayer` string functions | 34 | 38 |
+
+**Key structural change**: 27.1 added 246 PAC-authenticated stubs (`__auth_stubs`) that 26.6.1 lacks.
+Stride overflow detection strings ("AVC/HEVC stride overflow") disappeared from 27.1, replaced with
+different buffer layout assertions.
+
+**stp x0,x0,[x0] functions (init_list_head variants):**
+- 26.6.1: 4 large functions, all with NULL guards (`if param_1 != 0`)
+- 27.1: 4 functions, 2 small (36/40 insns) + 2 large; ALL have NULL guards (bug fixed)
+  - `FUN_fffffff0086c7cbc` (36 insns): initializes 3-field list_head (va, va, 0)
+  - `FUN_fffffff0086c7ce0` (40 insns): initializes 4-field list_head (va, va, va, 0)
+  - CVE-2026-112705 confirmed 27.0.1-only: null guard ABSENT in 27.0.1, RESTORED in 27.1
+
+---
+
+## 26.6.1 Attack Surface — Five New AVE2 CVEs (confirmed by advisory diff)
+
+iOS 26.7.2 (Oct 26, 2026) and iOS 27.2 (Oct 26, 2026) advisories revealed **five additional
+AVEVideoEncoder kernel-memory bugs** that existed in 26.6.1 and were patched ~10 weeks later.
+
+| CVE | Type | Impact |
+|-----|------|--------|
+| **CVE-2026-112689** | OOB write | App corrupts kernel memory |
+| **CVE-2026-112470** | OOB write | App corrupts kernel memory |
+| **CVE-2026-112469** | OOB write | App corrupts kernel memory |
+| **CVE-2026-112468** | OOB write | App corrupts kernel memory |
+| **CVE-2026-112466** | OOB read  | App reads kernel memory    |
+
+All five are in `com.apple.driver.AppleAVE2` (AVEVideoEncoder). Triggered from userspace via
+VideoToolbox API — same attack surface as CVE-2026-112705. CVE-2026-112466 (OOB read) is
+especially interesting as a prerequisite for a reliable kernel pointer leak.
+
+**Research priority**: These five bugs are in the SAME binary already under analysis. The 27.1
+binary is 190 KB larger in executable code and has additional bounds-check strings that are
+ABSENT in 26.6.1. The Ghidra "bounds" string anchored function grew from 1028 → 1300 insns
+(+272 insns of new validation code).
+
+Next: decompile the equivalent 27.1 function at `0xfffffff0086dcbd4` to find what new checks
+were added vs `0xfffffff0084dc708` in 26.6.1.
+
+---
+
+## CVE-2026-112688 — CoreMedia ACE from file parsing
+
+Fixed in iOS 26.7 (Sep 14, 2026). **Memory corruption → arbitrary code execution from parsing
+a malicious media file.** Exists in 26.6.1. If the vulnerability is in a framework loaded by
+SpringBoard or another privileged process, this could provide unsandboxed ACE.
+
+---
+
+## iOS 26.x release timeline (all versions after 26.6.1)
+
+| Version | Date | Key CVEs in AVE2 |
+|---------|------|-----------------|
+| 26.6.1 (current target) | ~Sep 4, 2026 | — (baseline) |
+| 26.7 | Sep 14, 2026 | CVE-2026-65410, -84616, -84607, CVE-2026-112688 (CoreMedia ACE) |
+| 26.7.1 | Sep 28, 2026 | no published CVEs |
+| 26.7.2 | Oct 26, 2026 | CVE-2026-112689/-470/-469/-468/-466 (5 AVE2 KM bugs) |
+
+---
+
+## Root cause analysis — 19 new size-overflow checkers in 27.1/26.7.2
+
+27.1 added 19 standalone functions matching `'%s | size overflow %d %d ...'` strings. These
+did **not exist at all** in 26.6.1. They are the patches for CVE-2026-112466/468/469/470/689.
+
+### The bug pattern (26.6.1)
+
+Buffer size calculations for hardware encoder buffers use **32-bit integer arithmetic**:
+```c
+// 26.6.1 (vulnerable — all arithmetic is int32):
+uVar5 = (iVar1 << 10) * iVar2;        // overflows silently for large w × h
+if ((int)uVar5 < 0) { /* overflow */ } // only catches negative overflow!
+// Positive overflow (e.g., wraps to 0x7FF800) passes unchecked → OOB
+```
+
+### The fix (27.1/26.7.2)
+
+New checker functions use **64-bit arithmetic** with proper overflow detection:
+```c
+// 27.1 (FUN_0x86f7160, newly added):
+uVar2 = (long)(int)(aligned_width) * (long)(int)(aligned_height);  // 64-bit product
+if (uVar2 >> 0x1f == 0) goto LAB_OK;  // bits above bit 31 must be zero
+// LOG "size overflow" + return 0
+```
+
+The key fix: `(long)(int)A * (long)(int)B` with `>> 0x1f == 0` catches BOTH negative and
+positive overflow, unlike `if ((int)product < 0)` which only catches the negative case.
+
+### Buffer types affected (five separate overflow paths = five CVEs)
+
+| Buffer | 27.1 Checker Function | overflow string |
+|--------|-----------------------|----------------|
+| Generic size A | `FUN_0x86f7160` (352 insns) | `size overflow` |
+| Generic size B | `FUN_0x86f72c0` (404 insns) | `size overflow` |
+| DPB (Decoded Pic Buf) | `FUN_0x86f7508` (1992 insns) | `DPB size overflow` |
+| HSCOutput buffer | `FUN_0x86f8488` (584 insns) | `HSCOutput size overflow` |
+| MCTFOutput buffer | `FUN_0x86f9f84` (1056 insns) | `MCTFOutput size overflow` |
+
+The DPB overflow is most exploitable: DPB holds reference frames used for inter-prediction.
+An OOB read from DPB → kernel pointer leak (CVE-2026-112466).
+An OOB write to DPB → overwrite adjacent kernel data structures.
+
+### Trigger conditions
+
+For 26.6.1 DPB overflow (HEVC CTU path, profile ≥ 30):
+- `iVar2 × iVar4 × 0x400` where `iVar2 = (h+39)/32`, `iVar4 = (w+39)/32`
+- Overflow at: `iVar2 × iVar4 > 0x3FFFFF` (4,194,303)
+  - Minimum square: `iVar2 = iVar4 ≥ 2049` → `w = h ≥ 65536`
+  - Non-square: `iVar2=4096, iVar4=1025` → `h=131072, w=32768`
+- VideoToolbox dimension limits: need to verify if HEVC level 6.x allows 65536px dimensions
+
+### Call path from VideoToolbox to overflow
+
+```
+VTCompressionSessionEncodeFrame (userspace)
+  → AVE2 IOKit EncodeFrame MIG handler
+    → config setup FUN_0x61aa58 (26.6.1)
+      → FUN_0x52e8f0 (stride setup, 968 insns)
+        → FUN_0x84eee68 (LRB size, 1124 insns) ← overflow target
+          → [LRB buffer kmem_alloc with wrong size]
+```
+
+---
+
 ## TODO / open questions
 
-- [ ] Pinpoint the exact 32-bit overflow instruction that produces x0=0x59 (dynamic analysis needed)
+- [x] Decompile 26.6.1 `FUN_0x84dc708` vs 27.1 `FUN_0x86dcbd4` — 27.1 added stack canary + 'P' parameter type + new `param_3` arg
+- [x] Identify root cause of five AVE2 CVEs — 32-bit integer overflow in buffer size calculations; 27.1 added 64-bit checked arithmetic
+- [ ] Find exact dimension threshold to trigger DPB/LRB overflow in 26.6.1 (verify HEVC level 6.x limits ≥ 65536px)
+- [ ] Write VideoToolbox PoC using HEVC + extreme dimensions to trigger OOB read/write
+- [ ] Obtain 26.7 kexts for finer-grained diff (which specific functions changed in 26.7 for the earlier set CVE-2026-65410, -84616, -84607)
+- [ ] Analyze CVE-2026-112688 (CoreMedia ACE) — what parsing path, what binary
 - [ ] Confirm whether Chollima includes a true SPTM bypass (disputed — not confirmed by Calif.io)
 - [ ] CVE-2026-65409: confirm actual impact — DoS or code execution — in Foundation binary
 - [ ] CVE-2026-112706: confirm the exact FigXPC "Curl" handler name in mediaplaybackd binary
