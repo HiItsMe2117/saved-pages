@@ -161,11 +161,28 @@ VTCompressionSessionCreate + kVTCompressionPropertyKey_NumberOfTemporalLayers=16
   → encode trigger
   → 0x85f64e4: fn_GOP_apply(session->gop_config)    [session+0x20 = gop_config]
   → 0x84ec038: fn_GOP_init_or_skip(gop_config)
-      → 0x84ec088: check: current_count < max_count
-      → 0x84ec098: ldp w0, w1, [gop_config+4]        ; w0=NTL(user-controlled!), w1=stride(internal)
-      → 0x84ec09c: ldr w2, [gop_config+0xc]           ; alignment (internal)
-      → 0x84ec0a4: bl 0x84ca290                        ; NON-CLAMPING init — NTL unchecked
+      → 0x84ec07c: bl 0x84ebfc4                        ; list_iterator(gop_config, sp-0x28)
+      → 0x84ec088: ldr w8, [gop_config+0x40]           ; w8 = current_count
+      → 0x84ec08c: ldr w9, [gop_config+0x10]           ; w9 = max_count
+      → 0x84ec094: b.ge skip                            ; if current_count >= max_count: skip
+      → 0x84ec098: ldp w0, w1, [gop_config+4]          ; w0=NTL(user-controlled!), w1=stride(internal)
+      → 0x84ec09c: ldr w2, [gop_config+0xc]            ; alignment (internal)
+      → 0x84ec0a4: bl 0x84ca290                         ; NON-CLAMPING init — NTL unchecked
 ```
+
+The non-clamping call only fires when `current_count < max_count` — on the FIRST encode
+call that initializes this GOP slot, not on every frame. `0x84ebfc4` is a list-iterator
+helper (not in the crash path itself).
+
+**gop_config field layout (from 0x84ec038 disassembly):**
+
+| Offset | Field | Notes |
+|--------|-------|-------|
+| +0x04 | NTL | user-controlled via `kVTCompressionPropertyKey_NumberOfTemporalLayers` |
+| +0x08 | stride | internal encoder value |
+| +0x0c | alignment | internal encoder value |
+| +0x10 | max_count | upper bound for counter guard |
+| +0x40 | current_count | compared against max_count before non-clamping call |
 
 NTL is **user-controlled** (set via VideoToolbox property → stored in gop_config[+4]).
 Stride and alignment are **internal** encoder values, not user-controlled.
