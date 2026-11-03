@@ -142,25 +142,23 @@ log(f"Log: {LOG_FILE}")
 log("---")
 
 # Ladder:
-#   First confirm the safe baseline and the first overflow value survive.
-#   Then binary-search 2056–4096 to pin the exact crash NTL.
-#   Write "STARTING" BEFORE the call so the last line in the log tells us
-#   which probe killed the process.
+#   SKIP near-threshold values (NTL 1500-2055): those request ~4GB allocations
+#   that stall even without 32-bit overflow. At NTL=2056 the overflow wraps the
+#   allocation to ~50 KB — a completely different (and fast-crashing) regime.
+#   Safe baselines stay well under 1 GB (NTL <= 500).
 LADDER = [
-    1,     # sanity: no overflow, should be encode_st=0
-    2000,  # just below threshold: no overflow
-    2056,  # first overflow NTL — may or may not crash depending on trigger
-    2200,
+    1,     # ~2 MB — sanity
+    100,   # ~200 MB — safe
+    500,   # ~1 GB — still safe, last safe point before stall territory
+    # Jump straight to overflow regime (32-bit wrap → tiny allocation → OOB):
+    2056,  # first overflow: DPB_unit*2056 wraps to ~50 KB
+    2100,
     2500,
     3000,
-    3500,
     4096,
-    # extended range only if we survive 4096:
+    # Extended only if 4096 survives (stall was seen at 8192 previously):
     6000,
     8192,
-    12000,
-    16000,
-    16462,
 ]
 
 for ntl in LADDER:
