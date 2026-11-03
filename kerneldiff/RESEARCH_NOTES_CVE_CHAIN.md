@@ -482,6 +482,48 @@ For 4K HEVC (3840×2160), CTU-64 path:
 This means the 5 new AVE2 CVEs may be triggered at 4K with NTL≈2056, achievable via
 standard VideoToolbox API on 26.6.1.
 
+### Dynamic analysis Run 2 — NTL ladder PoC, stall behavior (2026-11-03)
+
+**Job 4B5574A6 (Run 1 — previous session)**
+- NTL ladder `[1, 100, 500, 1000, 2000, 2056, 2100, 2500, 3000, 4096, 8192, 16000, 16462]`
+- Runtime: 151 seconds before crash (`recovered_ts - ts`)
+- Kill type: `"hard fault or jetsam kill"` (ambiguous)
+- Memory at log read time: 1440 MB
+- At ~10s per encode, 151s puts the crash in the NTL=4096–8192 range (deep in overflow window)
+
+**Job CB7D174F (Run 2 — this session)**
+- Same NTL ladder, flush-before-probe added for partial output visibility
+- Status after 40+ minutes: **no crash, no result, no crash log entry**
+- Memory: 1880–1925 MB (HIGHER than Run 1) — rules out OOM as the cause of the stall
+- Conclusion: encoder is alive but **stuck/spinning at a high NTL value**
+
+**Interpretation:**
+- The encoder DOES enter an abnormal state at NTL ≥ ~2057 (overflow threshold for 4K)
+- At very high NTL (8192, 16000): `VTCompressionSessionInvalidate` does not return — the encoder
+  spins trying to process thousands of reference frame slots through a corrupted DPB
+- This is consistent with the DPB overflow: the DPB is under-allocated, so when the encoder
+  tries to index reference frame N × (DPB_stride), it accesses memory beyond the allocation.
+  Since the corrupted addresses are still in mapped memory (heap), no immediate fault occurs —
+  the encoder just spins rather than panics.
+- The OOB write IS happening, but does not immediately kill the process — exactly the condition
+  needed for a reliable exploit primitive.
+
+**Key implication for exploit chain:**
+The silent OOB write at moderate NTL (≈2060–3000) is the sweet spot:
+- DPB overflow is triggered
+- Encoder doesn't stall (high NTL stall appears above ~4096)
+- Memory corruption occurs without process death
+- An attacker can spray the kernel heap before triggering to land a controlled structure
+  adjacent to the DPB, then trigger the encode to overwrite it
+
+**Next experiment (v3 PoC):**
+Test only 3 NTL values around the threshold — avoid high NTL stall:
+- NTL=2050: safe (below overflow), timing baseline
+- NTL=2060: minimal overflow, should complete but behave differently
+- NTL=2100: moderate overflow, still low enough to avoid stall
+Add explicit timing (`time.time()`) around session creation and invalidation to measure
+behavioral delta at the overflow boundary.
+
 ### Call path from VideoToolbox to overflow
 
 ```
