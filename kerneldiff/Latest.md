@@ -423,6 +423,66 @@ There is NO CFPreferences key for this. The `UIStatusBarShowingClockSeconds` key
 
 ---
 
+### Surface E — AVE2 32-bit DPB buffer-size overflow (LIVE — empirical probe ongoing)
+
+**Status:** Static analysis complete 2026-11-03. Dynamic probe in progress (NTL=2057 pending).
+
+**Root cause (26.6.1, `AppleAVE2` kext, offset ~0x28a000–0x28d000 in kernelcache):**
+
+`DPB buffer size = DPB_unit × NTL` computed in **32-bit arithmetic** in firmware. At 4K HEVC:
+- `DPB_unit = CTU_W × CTU_H × 1024 = 60 × 34 × 1024 = 2,088,960 bytes`
+- Overflow threshold: **NTL ≥ 2057** (not 2056; `floor(2^32 / 2,088,960) = 2056`, which is the last safe value)
+- NTL=2057: `2057 × 2,088,960 = 4,296,990,720 → truncates to 2,023,424 bytes (~2 MB) in 32-bit`
+- Firmware then allocates the ~2 MB wrapped size, but writes reference frames as if the buffer were ~4.3 GB → **OOB write**
+
+**DPB is kernel-visible — CONFIRMED by static analysis:**
+
+Strings in `kc_26.6.1.macho` AVE kext region (0x28b382, 0x28b3ef):
+- `pcaLFSResult[%d].IOSurfaceBuffer == NULL` — DPB low-resolution surfaces use `IOSurface`
+- `pcaLRSResult[%d].IOSurfaceBuffer == NULL` — low-res RC surfaces also IOSurface
+- `pcaRecon[AVE_RVRA_Org][layerIdx][k]` — reconstruction frames indexed by layer+frame
+
+`IOSurface` is kernel-managed shared memory (not firmware-private). Kernel VA tracked alongside firmware DART mapping — confirmed by FwLog template at 0x28ac1b:
+```
+FwLog %p %d | Phy 0x%lx Kernel 0x%lx DART 0x%llx | %d %d %d | %d %d
+```
+The OOB write exits the 2 MB wrapped allocation and **corrupts kernel-visible IOSurface memory**.
+
+**Bounds checks on ref-frame COUNT do NOT cover buffer SIZE path:**
+
+At 0x28b0ca: `num_ref_frame <= ((16) > (16) ? (16) : (16))` — caps frame COUNT at 16.
+The `DPB_unit × NTL` buffer SIZE calculation is a separate allocation path — no 64-bit promotion or upper-bound check found in 26.6.1 strings.
+
+**27.0.1 changes (static diff — what Apple added to fix it):**
+
+| Location in 27.0.1 | Change |
+|---|---|
+| `0x2ec8bb` (NEW — not in 26.6.1) | `(iLayerNum == 1) \|\| (iaCnt[1] == iTotalPendingFrameNum)` — frame-counter consistency assertion for multi-layer encoding |
+| `0x31080e` (CHANGED) | Added `iNumRefsSTR > 0` to slice reference assertion (was `iPOC > 0 && iTemporalLayer >= 0 && piRefNum != nullptr`) |
+
+The new `(iLayerNum == 1) || (iaCnt[1] == iTotalPendingFrameNum)` assertion fires when a multi-layer session has inconsistent pending-frame counts — this would catch the corrupted state caused by the OOB write, providing an integrity check. The size-check fix itself is likely in the binary (no assert string), but 27.0.1 adds catch assertions downstream.
+
+**Near-threshold stall zone (discovered empirically):**
+
+NTL 1500–2056 produce legitimate allocations of ~3–4.3 GB without overflowing 32-bit. The AVE2 firmware stalls attempting to allocate these — observed 15+ min for NTL=2000. After iOS process kill, AVE2 firmware continues running (no reset). Skip the entire range; jump directly from NTL ≤ 500 to NTL ≥ 2057.
+
+**Dynamic probe status (2026-11-03):**
+
+| NTL | Result |
+|---|---|
+| 1 | `encode_st=0x0 no_overflow(0x1fe000)` — baseline ✓ |
+| 2000 | `encode_st=0x0 no_overflow(0xf9060000)` — 4.19 GB stall, 15 min, completed |
+| 2056 | STARTING logged at 14:04:05 — not overflow (4.29 GB), force-killed ~5 min later; firmware still running |
+| **2057** | **PENDING** — waiting for firmware to clear NTL=2056 job |
+
+Current job (824760D3): NTL=1 STARTING at 14:09:56, blocked on firmware backlog. Memory at 1849 MB.
+
+**PoC file:** `kerneldiff/ave2_overflow_poc.py` (v4 — corrected threshold, skip stall zone)
+
+**CVEs:** CVE-2026-112466/468/469/470/689 (same 32-bit overflow pattern, different buffer size fields)
+
+---
+
 ## NVMe GL2 DMA Chain (post kernel-exec only)
 
 ```
@@ -439,6 +499,19 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 ## Next Steps (priority order)
 
 **← RESUME HERE → (fresh Claude session first — conversation context drives memory up ~500 MB)**
+
+0. **Surface E — AVE2 NTL=2057 dynamic probe (WAITING on firmware clear)**
+
+   Job 824760D3 has NTL=1 blocked on firmware backlog from prior NTL=2056 stall. Memory at 1849 MB.
+   Once NTL=1 completes, next job should test NTL=2057 (first real overflow). Expected outcomes:
+   - **Hard crash** (most likely): ~2 MB allocation → OOB write → kernel memory fault → jetsam / panic
+   - **ntl_rejected**: kext checks NTL before DPB allocation (would mean it's patched differently)
+   - **Completion**: overflow happened but no OOB damage on this encode → try multi-frame encode
+
+   If crash: read `/Library/Logs/CrashReporter/` (from Mac terminal tool) for ExceptionType — `EXC_BAD_ACCESS` confirms OOB write; `jetsam` is OOM.
+   Check AppGroup log for which NTL entry has STARTING but no result.
+
+   **DO NOT run probe at memory ≥ 1500 MB** — system is too close to OOM ceiling.
 
 1. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
@@ -510,6 +583,7 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 | `REPORT_MME_SANITIZE.md` | mach_make_memory_entry_64 sanitize removal diff |
 | `REPORT_SPTM.md` | SPTM binary analysis |
 | `REPORT_27.md` | 26.6.1 → 27.0.1 full kernel diff |
+| `ave2_overflow_poc.py` | Surface E dynamic probe — NTL ladder, AppGroup file logging |
 | `Latest.md` | **This file** — single source of truth for current state |
 
 *Kernelcaches on disk (NOT in git — regenerate if missing):*

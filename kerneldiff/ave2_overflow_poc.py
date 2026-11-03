@@ -141,24 +141,19 @@ log(f"DPB_unit={DPB_UNIT}  overflow_threshold=NTL>={OVERFLOW_NTL}")
 log(f"Log: {LOG_FILE}")
 log("---")
 
-# Ladder:
-#   SKIP near-threshold values (NTL 1500-2055): those request ~4GB allocations
-#   that stall even without 32-bit overflow. At NTL=2056 the overflow wraps the
-#   allocation to ~50 KB — a completely different (and fast-crashing) regime.
-#   Safe baselines stay well under 1 GB (NTL <= 500).
+# Ladder v4 — corrected overflow threshold:
+#   2056 × DPB_unit = 4,294,901,760 < 2^32 → NOT overflow (stalls like 2000)
+#   2057 × DPB_unit = 4,296,990,720 > 2^32 → first TRUE overflow → wraps to ~2 MB
+#   Skip all near-threshold values that stall (NTL 501–2056).
+#   Stop at 2500 — higher values wrap back near 4 GB and stall again.
 LADDER = [
-    1,     # ~2 MB — sanity
-    100,   # ~200 MB — safe
-    500,   # ~1 GB — still safe, last safe point before stall territory
-    # Jump straight to overflow regime (32-bit wrap → tiny allocation → OOB):
-    2056,  # first overflow: DPB_unit*2056 wraps to ~50 KB
-    2100,
-    2500,
-    3000,
-    4096,
-    # Extended only if 4096 survives (stall was seen at 8192 previously):
-    6000,
-    8192,
+    1,     # 2 MB   — sanity, no overflow
+    100,   # 200 MB — safe
+    500,   # 1 GB   — last safe baseline
+    2057,  # ~2 MB wrapped   — first real overflow, OOB write expected → fast crash
+    2100,  # ~88 MB wrapped  — overflow
+    2200,  # ~298 MB wrapped — overflow
+    2500,  # ~885 MB wrapped — overflow, stop here
 ]
 
 for ntl in LADDER:
