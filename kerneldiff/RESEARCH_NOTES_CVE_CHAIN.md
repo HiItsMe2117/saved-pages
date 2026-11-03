@@ -224,25 +224,73 @@ cmp w8, w21          ; compare with requested NTL
 csel w22, w8, w21, lt ; w22 = min(max_safe_NTL, requested_NTL) ← THE CLAMP
 ```
 
-### Inner init (`0x84ca1ac`) allocation safety (VERIFIED)
+### Ghidra decompilation — confirmed struct1 layout (VERIFIED 2026-11-03)
 
-All allocations in the inner init are correctly sized:
-```arm
-smull x1, w3, w26    ; x1 = NTL×24 as 64-bit (SAFE) → element array alloc
-bzero(element_array, NTL×24)
-umull x23, w19, w26  ; x23 = NTL×24 as 64-bit (SAFE) → loop bound
-mul w8, w22, w19     ; w22=stride, w19=NTL → 32-BIT overflow possible → struct field at +0x48
+Java 25 required for Ghidra 12.2 (min=25, `application.java.min=25`). Temurin 25.0.5
+installed at `/tmp/temurin25/jdk-25.0.5+8/Contents/Home`. Decompilation ran clean.
+
+#### GOP buffer struct1 field map (from `FUN_fffffff0084ca1ac` pseudocode)
+
+| Offset | Size | Field | Source |
+|--------|------|-------|--------|
+| +0x00–0x17 | 8×3=24 | list linkage (next/prev?) | zeroed |
+| +0x18 | 8 | self_ptr | set in `FUN_fffffff0084ca290` post-call |
+| +0x20 | 8 | element_array_ptr (lVar6) | set post-call |
+| +0x28 | 8 | raw_buffer_ptr (lVar7) | set post-call |
+| +0x30 | 4 | struct_size = 0xa8 | set post-call |
+| +0x34 | 4 | NTL × 24 (element array bytes) | set post-call (32-bit) |
+| +0x38 | 4 | buffer_size = iVar4 | set post-call (32-bit) |
+| +0x40 | 8 | aligned_buffer_ptr | `param_1[8] = param_3` |
+| +0x48 | 4 | aligned_stride × NTL (32-bit) | `*(uint*)(param_1+9) = param_5*param_4` |
+| +0x4c | 4 | NTL | `*(uint*)(param_1+0x4c) = param_4` |
+| +0x50 | 4 | aligned_stride | `*(int*)(param_1+10) = param_5` |
+| +0x58 | 8 | element_array_ptr (lVar6 again) | `param_1[0xb] = param_2` |
+| +0x60 | ~24 | list_head_A | initialized by `init_list_head_full` |
+| +0x80 | ~24 | list_head_B | initialized by `init_list_head_full` |
+| +0xa4 | 4 | remaining_count (= NTL initially) | decremented by FUN_fffffff0084ca770 |
+
+#### The `mul w8, w22, w19` overflow: PROTECTED by overflow guard (CORRECTED)
+
+The 32-bit write at struct1+0x48 (`aligned_stride × NTL mod 2^32`) is **guarded**
+in `FUN_fffffff0084ca290` (the non-clamping init):
+```c
+iVar3 = 0x7fffffff / (int)uVar2;   // = INT32_MAX / aligned_stride
+if (iVar3 <= iVar9) return 0xfffffc09;  // REJECTS if NTL ≥ INT32_MAX/aligned_stride
 ```
 
-The loop inserts NTL elements into the linked list. All memory accesses are within
-correctly-sized allocations. The crash mechanism requires dynamic analysis to pinpoint —
-the 32-bit overflow fingerprint (`mul w8, w22, w19` or a similar computation) is the
-likely source of the corrupt value.
+This guard ensures `aligned_stride × NTL < INT32_MAX < 2^32` — **no 32-bit overflow
+is possible for any inputs that pass the guard**. For NTL=16463 and typical frame
+strides (1920–7680 bytes), the guard passes and the product does NOT overflow.
+
+**Consequence:** The "write-any-32-bit-value via aligned_stride × NTL" theory from the
+gap analysis is INCORRECT for the crash at NTL=16463. The actual corruption mechanism
+requires dynamic analysis — the 2^32 overflow fingerprint in x0/x19 comes from a
+DIFFERENT 32-bit computation, not from struct1+0x48. Possibly from `FUN_fffffff0084ca770`
+pointer arithmetic or a function that reads struct1 fields later in the pipeline.
+
+#### FUN_fffffff0084ca770 — GOP buffer frame dequeue (VERIFIED)
+
+```c
+lVar3 = FUN_fffffff0084c9c24(param_1 + 0x60);  // dequeue element from list_head_A
+FUN_fffffff0084c9930(param_1 + 0x60);           // list update
+FUN_fffffff0084c9d04(param_1 + 0x80, lVar3);   // link element to list_head_B
+iVar1 = *(int *)(param_1 + 0x50);               // iVar1 = aligned_stride
+*param_2 = *(long *)(param_1 + 0x40) +          // output_ptr = buffer_base +
+    (long)((int)((ulong)(lVar3 - *(long *)(param_1 + 0x58)) >> 3) * iVar1 * -0x55555555);
+// The `* -0x55555555` is the compiler's multiply-by-(1/3 mod 2^32) trick:
+// (byte_offset_of_element / 8 / 3 = element_index) → element_index × aligned_stride
+*(int *)(param_1 + 0xa4) = *(int *)(param_1 + 0xa4) + -1;  // decrement remaining_count
+```
+
+This function is called right after GOP init in `fn_GOP_init_or_skip`. It reads
+aligned_stride from struct1+0x50 — **not +0x48** — for the pointer arithmetic.
+The computed offset `element_index × aligned_stride` is also a 32-bit multiply;
+the same overflow guard prevents it from overflowing for the same reason.
 
 ### Public PoC assessment
 The public crash (NTL=16463) is a **kernel panic / DoS primitive** on its own.
-"Fixed-offset constant fill, no arbitrary read/write capability" — the Chollima chain
-likely uses additional primitives to convert the OOB write into a full kernel r/w.
+The crash at `init_list_head_full` with x0=0x59 requires dynamic analysis to pinpoint —
+static analysis rules out the struct1+0x48 overflow guard path for typical frame strides.
 
 ### linked-list helper functions (26.6.1, VERIFIED)
 

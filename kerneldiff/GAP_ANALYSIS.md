@@ -84,6 +84,7 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 | Tool | Use | Gap |
 |------|-----|-----|
 | radare2 (r2) | Disassembly | No decompilation; manual only |
+| Ghidra 12.2 + PyGhidra | Decompilation | **OPERATIONAL** (2026-11-03). Java 25 required. Confirmed struct1 layout, closed the mul-overflow theory, found the overflow guard. |
 | ResearchHost | iPhone Python execution | Probes written but NOT YET RUN |
 | rh_run.py | ResearchHost client | Working |
 | Manual BL scan (Python) | Caller analysis | Works but tedious |
@@ -92,7 +93,7 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 ### Not using but should consider
 | Tool | What it provides | Why we need it |
 |------|-----------------|----------------|
-| **Ghidra + GhidraARM64** | Decompilation of ARM64 | Function semantics, struct recovery, type inference — would have found the gop_config struct layout instantly |
+| **Ghidra — gop_config setup** | Decompile session init to trace gop_config[+8] (stride) | Need to confirm if stride is user-controlled via frame dimensions (determines if NTL+stride write-any-value is feasible) |
 | **r2 analysis mode** (`aaa`) | Automatic xrefs, function boundaries | We're using raw `-q` mode; `aaa` then `axt addr` gives all callers automatically |
 | **Binary diff (diffware/BinDiff)** | 26.6.1 vs 27.0.1 delta | We did manual diff; automated diff would show ALL changed functions, not just the ones we guessed |
 | **ipsw** CLI tool | Firmware extraction/analysis | Clean kext extraction, version comparison |
@@ -117,27 +118,37 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 The IOGPUFamily OOB (CVE-2025-24257) was declared unexploitable on DEFAULT heap layout.
 That doesn't close the question for AVE2. Creative angles to pursue BEFORE accepting DoS:
 
-**1. The `mul w8, w22, w19` write is a two-factor controlled write.**  
-`stp w8, w19, [x20, 0x48]` writes: w8=`aligned_stride × NTL mod 2^32`, w19=`NTL`.
-NTL is fully user-controlled. aligned_stride = align_up(width × bpp, alignment); if frame
-width is user-controlled, aligned_stride is too. Two user-controlled factors in a 32-bit
-modular multiply = potentially write-any-32-bit-value to struct1+0x48. The zone question
-becomes: can we groom a specific target struct type into struct1's adjacent slot?
+**1. The `mul w8, w22, w19` overflow — CORRECTED by Ghidra analysis (2026-11-03)**  
+Ghidra decompilation confirmed the 32-bit write at struct1+0x48 is PROTECTED:
+```c
+iVar3 = 0x7fffffff / aligned_stride;
+if (iVar3 <= NTL) return error;  // REJECTS NTL ≥ INT32_MAX/stride
+```
+This guard ensures `aligned_stride × NTL < INT32_MAX` — NO OVERFLOW POSSIBLE for any
+inputs that pass the guard. The "write-any-32-bit-value via `mul`" theory is wrong for
+NTL=16463 crash values. The actual crash mechanism is from something else (dynamic analysis
+required). **Retract creative angle #1 and #2 as stated — the guard closes them.**
 
-**2. NTL is a continuous tuning knob for the write value.**  
-NTL=16463 → x0=0x59, NTL=16464 → x0=0x100000059. Systematically varying NTL changes
-what gets written. There exists an NTL value (solvable via modular inverse for any target
-value V: NTL ≡ V × stride^{-1} mod 2^32) that writes any desired 32-bit value.
-Combined with groomed adjacency, this is a controlled-value write, not a fixed garbage write.
+**REVISED exploitation model:**  
+The 2^32 fingerprint in x0/x19 must come from a DIFFERENT 32-bit computation downstream.
+Candidates: (a) some caller of `FUN_fffffff0084ca770` does 32-bit arithmetic on the struct
+fields; (b) the NTL=16463 value triggers some other unchecked path; (c) the 30MB buffer
+allocation side-effects cause heap corruption in adjacent regions (kalloc_large territory).
+None of these has been traced statically — dynamic analysis is the next required step.
 
-**3. Counter guard `current_count < max_count` is a timing/ordering surface.**  
-The non-clamping call fires only on the FIRST GOP slot allocation. Multiple concurrent
-sessions can race to shape heap layout at allocation time. Classical heap feng shui.
+**2. Counter guard `current_count < max_count` is still a timing/ordering surface.**  
+The non-clamping call fires only on the FIRST GOP slot allocation (current_count < max_count).
+Multiple concurrent sessions can race to shape heap layout at allocation time. This is
+independent of the mul overflow and remains valid for heap grooming.
 
-**4. The stride buffer size is user-tunable.**  
-Allocated as `aligned_stride × NTL` bytes (~530KB for NTL=16463). Large kernel allocations
-land in predictable zones. The SIZE itself being tunable (via NTL + frame width) means we
-can aim the allocation at specific heap regions.
+**3. The main buffer size IS user-tunable (via NTL).**  
+The main buffer `iVar4 = (alignment-1) + aligned_stride × NTL` bytes (~30MB for NTL=16463,
+1920-byte stride). Large kernel allocations land in kalloc_large. The SIZE being tunable
+via NTL means you can aim the allocation at specific heap regions. Confirmed from Ghidra.
+
+**4. NTL controls timing of first-init via the counter guard.**  
+Setting NTL very high (up to the overflow guard limit = INT32_MAX/stride ≈ 1M for stride=2048)
+maximizes the buffer size. This could be used to pressure/groom the kernel heap.
 
 **Rule:** "No adjacent pointers in this zone" means "find a way to put the right adjacent
 object there." Always look for grooming angles before accepting unexploitable.
@@ -178,19 +189,25 @@ Public PoC code exists: `MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak` and `7
 
 **High:**
 1. Run the Surface C probe (surface_c_probe_a → surface_c_probe_b_overflow) when memory < 1250 MB
-2. Switch to r2 analysis mode (`aaa`) + `axt` for all future caller scans — eliminates manual Python BL scripts
-3. Read CVE-2026-112706 PoC repos (`MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak`, `794pn2s6fh-hub/cve-112706`) — code exists, we haven't looked
-4. Check AppleAVE2 MIG dispatch table in 26.6.1 — prior bugs (ziVA, CVE-2019-8795) hit method 7; is it still present?
-5. Verify AVE2 kalloc zones contain pointer fields — prerequisite for knowing if OOB is exploitable vs DoS-only
+2. Determine actual NTL=16463 crash mechanism — use Ghidra to decompile callers of `FUN_fffffff0084ca770` and any function that reads struct1+0x48/+0x4c; requires dynamic analysis ultimately
+3. Use Ghidra to trace gop_config[+8] stride write path — determine if stride is user-controlled via frame width
+4. Read CVE-2026-112706 PoC repos (`MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak`, `794pn2s6fh-hub/cve-112706`) — code exists, we haven't looked
+5. Check AppleAVE2 MIG dispatch table in 26.6.1 — prior bugs (ziVA, CVE-2019-8795) hit method 7; is it still present?
+6. Verify AVE2 kalloc zones contain pointer fields — prerequisite for knowing if OOB is exploitable vs DoS-only
 
 **Medium:**
-6. Study DarkSword (CVE-2025-43520, iOS 18) data-only primitive technique — closest public template to our situation
-7. Set up Ghidra on Mac for AppleAVE2 decompilation — pseudocode output for `0x84ec038`/`0x84ca290` would validate our pseudocode
+7. Study DarkSword (CVE-2025-43520, iOS 18) data-only primitive technique — closest public template to our situation
 8. Analyze the DART / 32768×16384 dimension trigger — separate AVE bug, may be lower-bar surface
 9. Document Exclaves/hypervisor layer implications for iOS 26 exploitation — `cloverfield11/ios26-hypervisor-research`
+10. Switch to r2 `aaa` + `axt` for all future caller scans
 
 **Low:**
-10. Confirm Foundation CVE-2026-65409 mechanism in binary (DoS vs code execution)
-11. Survey other VTCompressionSession properties for similar integer-overflow patterns
-12. Survey other FigXPC services for unauthenticated handshake pattern
-13. Build formal attack surface registry and binary/tool inventory docs
+11. Confirm Foundation CVE-2026-65409 mechanism in binary (DoS vs code execution)
+12. Survey other VTCompressionSession properties for similar integer-overflow patterns
+13. Survey other FigXPC services for unauthenticated handshake pattern
+14. Build formal attack surface registry and binary/tool inventory docs
+
+**DONE:**
+- ~~Set up Ghidra on Mac~~ ✓ Ghidra 12.2 + Java 25 (Temurin 25.0.5) + PyGhidra 3.0, 2026-11-03
+- ~~Decompile key AVE2 functions~~ ✓ struct1 layout confirmed from FUN_fffffff0084ca1ac pseudocode
+- ~~Verify mul overflow theory~~ ✓ CLOSED: overflow guard (`INT32_MAX/stride > NTL`) prevents it
