@@ -139,7 +139,9 @@ Kernel data abort: PC = TEXT_EXEC+0xDA78 = VA 0xfffffff0086c7ce8
 ```
 
 The crash instruction is `stp x0, x0, [x0]` — the "full" linked-list node initializer
-(`init_list_head_full`). Equivalent crash site in 26.6.1: `0x84c9850`.
+(`init_list_head_full`). The equivalent in 26.6.1 is `FUN_0x84c9850`, but that function has
+a NULL guard and a larger struct layout — 26.6.1 **does not crash** at NTL=16463 (confirmed
+by live device test, 2026-11-03).
 
 #### The 2^32 overflow fingerprint
 
@@ -287,10 +289,37 @@ aligned_stride from struct1+0x50 — **not +0x48** — for the pointer arithmeti
 The computed offset `element_index × aligned_stride` is also a 32-bit multiply;
 the same overflow guard prevents it from overflowing for the same reason.
 
+### Dynamic analysis — 26.6.1 device test (2026-11-03)
+
+**Key findings from live device testing via offload_python (iPhone 16+, iOS 26.6.1):**
+
+1. **H.264 rejects NTL property entirely** — `VTSessionSetProperty` returns `-12900` for any
+   NTL value on an H.264 session. The crash is **HEVC (`hvc1`)-specific**.
+
+2. **HEVC on 26.6.1 does NOT crash at NTL=16463** — property set succeeds (status=0x0),
+   `VTCompressionSessionEncodeFrame` returns 0x0 with `info=0x1` (async queued), no panic.
+   Tested NTL values 16462, 16463, 16464, 32767, 65535 — all accepted without crashing.
+
+3. **CVE-2026-112705 is a 27.x-only bug** — confirmed by Ghidra diff:
+
+   | Feature | 26.6.1 `FUN_0x84c9850` | 27.0.1 crash site |
+   |---------|------------------------|-------------------|
+   | NULL guard | `if (param_1 != 0)` before write | absent — writes unconditionally |
+   | list_head size | 4 fields: next, prev, ptr, count (0x1c bytes) | 3 fields: next, prev, count (0x18 bytes) |
+   | GOP struct layout | larger struct → different offsets | smaller → NTL=16463 lands at 0x59 |
+
+   Apple restructured the GOP/list-head code between 26.6.1 and 27.0.1, removing the
+   NULL guard and shrinking the list_head struct, introducing the vulnerability.
+
+4. **Practical implication**: a 26.6.1 device cannot be reached via CVE-2026-112705.
+   The `vt_crash_reproducer.py` script (HEVC, NTL=16463) is valid for 27.x targets;
+   on 26.6.1 it confirms the VideoToolbox pipeline is reachable but exits cleanly.
+
 ### Public PoC assessment
-The public crash (NTL=16463) is a **kernel panic / DoS primitive** on its own.
-The crash at `init_list_head_full` with x0=0x59 requires dynamic analysis to pinpoint —
-static analysis rules out the struct1+0x48 overflow guard path for typical frame strides.
+The public crash (NTL=16463) is a **kernel panic / DoS primitive** on 27.x only.
+The crash at `init_list_head_full` with x0=0x59 requires dynamic analysis on a 27.x device
+to pinpoint — static analysis rules out the struct1+0x48 overflow guard path for typical
+frame strides, and 26.6.1 is protected by the NULL guard in the list_head initializer.
 
 ### linked-list helper functions (26.6.1, VERIFIED)
 
