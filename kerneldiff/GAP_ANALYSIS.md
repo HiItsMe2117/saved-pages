@@ -112,6 +112,36 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 - Foundation PDF type confusion (CVE-2026-65409) — unconfirmed mechanism
 - Surface C probe: AURemoteIOServer ASBD overflow (CVE-2026-113912) — probe written, not run
 
+### On "DoS only" assessments — don't stop at the first wall
+
+The IOGPUFamily OOB (CVE-2025-24257) was declared unexploitable on DEFAULT heap layout.
+That doesn't close the question for AVE2. Creative angles to pursue BEFORE accepting DoS:
+
+**1. The `mul w8, w22, w19` write is a two-factor controlled write.**  
+`stp w8, w19, [x20, 0x48]` writes: w8=`aligned_stride × NTL mod 2^32`, w19=`NTL`.
+NTL is fully user-controlled. aligned_stride = align_up(width × bpp, alignment); if frame
+width is user-controlled, aligned_stride is too. Two user-controlled factors in a 32-bit
+modular multiply = potentially write-any-32-bit-value to struct1+0x48. The zone question
+becomes: can we groom a specific target struct type into struct1's adjacent slot?
+
+**2. NTL is a continuous tuning knob for the write value.**  
+NTL=16463 → x0=0x59, NTL=16464 → x0=0x100000059. Systematically varying NTL changes
+what gets written. There exists an NTL value (solvable via modular inverse for any target
+value V: NTL ≡ V × stride^{-1} mod 2^32) that writes any desired 32-bit value.
+Combined with groomed adjacency, this is a controlled-value write, not a fixed garbage write.
+
+**3. Counter guard `current_count < max_count` is a timing/ordering surface.**  
+The non-clamping call fires only on the FIRST GOP slot allocation. Multiple concurrent
+sessions can race to shape heap layout at allocation time. Classical heap feng shui.
+
+**4. The stride buffer size is user-tunable.**  
+Allocated as `aligned_stride × NTL` bytes (~530KB for NTL=16463). Large kernel allocations
+land in predictable zones. The SIZE itself being tunable (via NTL + frame width) means we
+can aim the allocation at specific heap regions.
+
+**Rule:** "No adjacent pointers in this zone" means "find a way to put the right adjacent
+object there." Always look for grooming angles before accepting unexploitable.
+
 ### CVE-2026-112706 PoC repos (not yet examined)
 Public PoC code exists: `MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak` and `794pn2s6fh-hub/cve-112706`.
 - "FigXPC memory-origin handshake completes with status 0 for unprivileged client" — unauthenticated handshake step is the leverage point
