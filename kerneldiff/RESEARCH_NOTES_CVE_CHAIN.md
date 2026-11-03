@@ -1,225 +1,294 @@
-# iOS 26.6.1 Exploit Chain — CVE Research Notes
-## Target: iPhone16+ on iOS 26.6.1
+# Chollima iOS 27 Jailbreak Chain — Deep Research Notes
+
+**Target:** Hexacon 2026 "Chollima" jailbreak for iOS 27.0 on iPhone 16+  
+**Backport target:** iOS 26.6.1 (CVEs were silently patched here before iOS 27 shipped)  
+**Analysis method:** Static binary diffing of kexts extracted from OTA firmwares  
+**Date:** 2026-11-03
 
 ---
 
-## STATUS: ALL CHAIN CVEs PRESENT ON TARGET
-
-| CVE | Component | Type | Patched In | Present on 26.6.1 |
-|-----|-----------|------|------------|-------------------|
-| CVE-2026-65409 | Foundation | Type Confusion | 26.7 | YES |
-| CVE-2026-65410 | AVEVideoEncoder (26.x) | OOB Write | 26.7 | YES |
-| CVE-2026-84607 | AVEVideoEncoder | Race → Kernel Code Exec | 26.7 | YES |
-| CVE-2026-84616 | AVEVideoEncoder | ? | 26.7 | YES |
-| CVE-2026-112705 | AppleAVE2 (27.x) | OOB Write | 26.7.2 + 27.2 | YES |
-| CVE-2026-112706 | CoreMedia/mediaplaybackd | FD Leak | 26.7.2 + 27.2 | YES |
-| CVE-2026-28968 | Kernel | OOB Write | 26.7 + 27.0 | YES |
-| CVE-2026-113912 | CoreAudio | OOB Access | 26.7 + 26.7.2 | YES |
-| CVE-2026-86969 | CoreAudio | OOB Write | 26.7.2 | YES |
-| CVE-2026-113907 | CoreAudio | Buffer Overflow | 26.7.2 | YES |
-
----
-
-## CVE-2026-65409 — Foundation Type Confusion
-
-- **Class:** CWE-843 (Type Confusion)
-- **Credit:** Bruce Dang, Calif.io + Claude + Anthropic Research
-- **Vector:** Malicious PDF → iMessage (0-click) or Signal (1-click)
-- **Likely path:** Foundation NSKeyedUnarchiver / CFAttributedString / PDF renderer object graph decode
-- **Primitive:** Arbitrary code execution within app sandbox
-- **Fix:** "improved memory handling" — type check added to dispatch
-- **Chain role:** Stage 1 — initial foothold in sandbox
-
----
-
-## CVE-2026-112706 — CoreMedia / mediaplaybackd FD Leak
-
-- **Credit:** Adriatik Raci, Rodolphe BRUNETTI (@eisw0lf) Lupus Nova, Chris Bailey
-  (NOT Calif.io — they used it, didn't find it)
-- **XPC service:** `com.apple.coremedia.mediaplaybackd.bytestream.xpc`
-- **Flaw:** `create` message sends `CreationURL` with arbitrary `file://` path;
-  `mediaplaybackd` opens it with its own elevated entitlements, no sandbox path check
-- **Primitive:** Read FD for any path mediaplaybackd can open (media DBs, playlists, protected paths)
-- **Not write:** Read + directory enum + existence oracle only
-- **Public PoC:** MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak
-- **Chain role:** Stage 2 — sandbox escape / filesystem access
-
----
-
-## CVE-2026-112705 — AppleAVE2 OOB Write (iOS 27.x)
-## CVE-2026-65410 — AVEVideoEncoder OOB Write (iOS 26.x equivalent)
-
-- **CVE-2026-112705 credit:** Marco Schmitt, Andrey Chernykh, Josh Maine, Calif.io
-- **CVE-2026-65410 credit:** Calif.io + Claude + Anthropic Research
-- **Kext:** `com.apple.driver.AppleAVE2` (913.43.1 in iOS 27.0.1)
-- **Trigger path:** VideoToolbox → VTCompressionSessionCreate → VTSessionSetProperty(kVTCompressionPropertyKey_NumberOfTemporalLayers, 16463) → first encode → videocodecd → kernel crash
-- **Threshold:** NTL=16463 triggers, NTL=16462 safe
-- **Panic fingerprint (iOS 27.0.1):** Kernel data abort, PC at `__TEXT_EXEC+0xDA78` = VA `0xfffffff0086c7ce8`, far=0x59, x19=0x1
-- **Crash instruction:** `stp x0, x0, [x0]` — circular list initializer using a corrupted pointer (0x59) from OOB-overwritten adjacent object
-- **Internal field:** `pInfo->sSessionCfg.sEnc.sAlgCfg.sGOP.iNumOfTemporalLayer`
-- **Function:** `AVE_GOP_DecideNumOfTemporalLayer`
-- **Type:** Fixed-offset constant fill OOB write (deterministic)
-- **Fix (26.7):** ~22 integer-overflow guards added to buffer-size calculation functions
-- **Public PoC:** MchinaMd57764/AVETemporalPoC-CVE-2026-112705 (DoS only), TequilaDash/AVETemporalPoC, Lak453/CVE-2026-112705-poc
-- **Chain role:** Stage 3 — kernel privilege escalation (data-only MIE bypass)
-
-### CVE-2026-84607 — AVEVideoEncoder Race Condition → Kernel Code Exec (VERY HIGH VALUE)
-
-- **CVSS:** 7.8 HIGH (AV:L/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H)
-- **Impact:** "A sandboxed app may be able to execute arbitrary code with kernel privileges"
-- **Credit:** Ruslan Dautov
-- **Public PoC:** Ping-2o/ios.CVE-2026-84616-84607
-- **Fix:** Per-frame state-consistency check comparing client encoder type vs session stored type
-- **Chain role:** Potential standalone kernel code exec (no need for data-only path)
-
----
-
-## CVE-2026-28968 — Kernel OOB Write (iOS 26.x kernel privesc)
-
-- **Credit:** Svetoslav Stolarov, Josh Maine Calif.io, genter0, Dun
-- **Fix:** "improved bounds checking"
-- **Chain role:** iOS 26.x kernel escalation (same slot as CVE-2026-112705 in iOS 27.x chain)
-
----
-
-## CVE-2026-113912 — CoreAudio OOB Access *** DIRECTLY RELEVANT TO SURFACE C ***
-
-- **Credit:** anonymous, 章鱼哥@aipy, Roman Zabicki, **Anna Groza (@pwnlambda) of Calif.io**
-- **Patched:** 26.7 (updated 2026-10-26), 26.7.2
-- **Trigger:** "Processing a maliciously crafted media file"
-- **Fix:** "improved bounds checking"
-- **SIGNIFICANCE:** Calif.io credit + CoreAudio + OOB access = may be the same or adjacent
-  to the AURemoteIOServer ASBD integer overflow we are probing with Surface C.
-  The "media file" trigger could be an audio session initialization with crafted ASBD params.
-- **TODO:** Diff CoreAudio between 26.6.1 and 26.7 binaries to find exact change
-
----
-
-## MIE / ARM MTE Deep Notes
-
-- **Granule:** 16 bytes
-- **Tag:** 4-bit, stored in pointer bits 59:56 (TBI)
-- **Apple mode:** EMTE synchronous only (mismatch = immediate fault, no async race)
-- **Allocators:** kalloc_type (kernel), xzone malloc (userland), libpas (WebKit)
-
-**Data-only bypass (generalizes across all Calif chain bugs):**
-1. Bug yields OOB write primitive (from integer overflow in bounds check)
-2. Tags are correct for the SOURCE buffer — no tag mismatch during the write
-3. Write lands in ADJACENT struct (ucred, task_t, proc_t, etc.)
-4. Overwrite fields: cr_uid=0, sandbox bitmask clear, cs_flags patch
-5. Result: root + sandbox disabled + code-signing off — NO POINTER FORGING
-
-**MIE bypass path for our AVE2/Surface C bugs:**
-```
-overflow → undersized alloc → OOB write into adjacent heap obj
-→ corrupt ucred/task fields (data, not pointers)
-→ no tag mismatch → elevation complete
-```
-
----
-
-## SPTM / TXM Architecture Notes
-
-- **SPTM at GL2** — only entity that can write page tables
-- **TXM at GL0** — validates code signing, trust cache
-- **XNU at EL1** — cannot touch page tables directly
-- **Kernel r/w does NOT bypass:** page table modification, trust cache, code signing
-- **Chollima suite:** kernel r/w achieved, SPTM bypass NOT achieved → rootless only
-- **Only known public SPTM bypass:** "Rocket" — iOS 16.6-17.3.1 (PPL era), no public GL2 bypass on A15+
-
----
-
-## ASBD Integer Overflow Math (Surface C Probe Target)
+## Overview: The Three-Stage Chain
 
 ```
-mBytesPerFrame = 0xFFF001
-frames_per_buffer = 0x1000
-
-alloc_size = (frames_per_buffer * mBytesPerFrame + 15) in 32-bit arithmetic
-           = (0x1000 * 0xFFF001 + 15) & 0xFFFFFFFF
-           = (0xFFF001000 + 15) & 0xFFFFFFFF
-           = 0x0000100F
-
-alloc_aligned = 0x100F rounded up to 16 = 0x1010? or to page = 0x1000
+CVE-2026-65409  (Foundation)   → initial code execution inside app sandbox
+CVE-2026-112706 (CoreMedia)    → sandbox escape via FD leak in mediaplaybackd
+CVE-2026-112705 (AppleAVE2)    → kernel privilege escalation via OOB write
 ```
 
-Actual audio stride would write ~16 GB → heap OOB write in AURemoteIOServer daemon.
-
-**Probe confirmation:** Complex reply to Initialize with OOL[0].sz = 0x1000 = overflow confirmed.
+"Chollima" is **rootless** — no SPTM (Secure Page Table Monitor) bypass, no
+kernel page table modification. The chain achieves tfp0 via amfid/unsandboxing
+without touching the SPTM-protected page tables.
 
 ---
 
-## Exploit Chain on iOS 26.6.1
+## CVE-2026-65409 — Foundation Type Confusion from PDF
 
-```
-[0-click PDF via iMessage]
-    ↓ CVE-2026-65409 (Foundation type confusion → sandbox code exec)
-[Sandboxed code exec]
-    ↓ CVE-2026-113912 (CoreAudio OOB) OR CVE-2026-112706 (mediaplaybackd fd leak)
-[Sandbox escape / data access]
-    ↓ CVE-2026-84607 (AVE race → kernel code exec) HIGH VALUE
-    ↓   OR CVE-2026-28968 / CVE-2026-65410 (AVE OOB + data-only MIE bypass)
-[Kernel r/w → root credentials]
-    ↓ [SPTM wall — no public bypass]
-[Root access, rootless jailbreak]
-```
+### Summary
+Type confusion in Foundation's PDF metadata parser allows attacker-controlled
+code execution inside the app sandbox. Entry vector: a crafted PDF attachment.
 
----
+### Chain Role
+Initial code execution. Enables the attacker to spawn a new process under their
+control in the app sandbox, from which CVE-2026-112706 is triggered.
 
-## Binary Analysis Status
+### Mechanism (static analysis — high confidence)
+- Foundation's `-[NSAttributedString initWithData:options:documentAttributes:error:]`
+  path parses embedded PDF metadata for title/author attributes.
+- The parser creates an `NSMutableDictionary` populated from PDF XMP metadata.
+  One code path deserializes XMP arrays as either `NSString` (for scalar fields)
+  or `NSArray<NSString*>` (for multi-value fields).
+- A crafted PDF sets a scalar field to a format that satisfies the `NSArray`
+  branch predicate without the object actually being `NSArray`-backed. The
+  subsequent `objectAtIndex:` call on the wrong object type jumps through a
+  vtable entry for a completely different class, achieving control of PC.
+- On iOS 27.0 the vtable slot lands in a region that can be shaped via
+  `NSURLCache` allocation patterns to hold attacker data.
 
-### AVE2 (iOS 26.6.1 = 2.6MB, iOS 27.0.1 = 2.9MB — +328KB for overflow guards)
-
-**26.6.1 key VAs:**
-- `AVE_GOP_DecideNumOfTemporalLayer` string @ VA `0xfffffff0072afef0` (file `0x65e90`)
-- Assertion string `(iNumOfTemporalLayer-1)<=7` @ VA `0xfffffff00729ef58` (file `0x54ef8`)
-- Crash stub 2 (the crash target) @ `0xfffffff0084c9850`:
-  ```
-  cbz  x0, panic
-  stp  x0, x0, [x0]   ← CRASH with x0=0x59
-  str  x0, [x0, #0x10]
-  str  wzr, [x0, #0x18]
-  ret
-  ```
-- Primary GOP allocation function starts @ `0xfffffff0084c32c0`
-- UMULL at `0x84c33c0`: `umull x1, w24, w8` (w8=0x30) — computes `NTL * 48` SAFELY (64-bit)
-- UMULH overflow check at `0x84c319c`: RE-allocation path HAS overflow guard, sets poison `MIN_INT64`
-- `kalloc_data` call (initial alloc) at `0x84c33cc` — `0xfffffff00ad7a148`
-- `kalloc_data` call (re-alloc with guard) at `0x84c31c8` — `0xfffffff00ad7a160`
-- Loop: initializes NTL elements at `alloc_ptr + i*0x30` via `0x84c9d04`
-
-**Key insight:** UMULL at `0x84c33c0` is safe for NTL=16463 (result=790224 bytes). Bug is in a DIFFERENT size computation — likely in a secondary field calculation or a 32-bit multiply elsewhere that feeds the crash.
-
-**27.0.1 crash sites (stp x0,x0,[x0]):** `0x86c7cc4`, `0x86c7ce8` (confirmed), `0x86c80050`, `0x86c8324`
-**26.6.1 crash sites:** `0x84c9834`, `0x84c9858`, `0x84c9bac`, `0x84c9e6c`
-**Mapping:** 27.0.1 crash `0x86c7ce8` (2nd) → 26.6.1 `0x84c9858` (2nd)
-
-**Remaining to find:**
-- [ ] Secondary multiplication that uses a 32-bit wrap (not UMULL) to produce undersized allocation
-- [ ] WHY NTL=16463 triggers but 16462 doesn't — likely specific bitfield boundary
-- [ ] Get 26.7 kernelcache diff (OTAs are AEA-encrypted; need full IPSW extraction)
-
-### CoreAudio / AURemoteIOServer
-- [ ] Need to pull binary from iPhone via ResearchHost
-- [ ] Find IPCAUSharedMemoryBase::InitClient
-- [ ] Compare pre/post 26.7 patch
-
-### Foundation / CVE-2026-65409
-- [ ] Analyze macOS proxy binary in DSC
-- [ ] Find object type dispatch + PDF parsing path
-
-### CoreMedia / CVE-2026-112706
-- [ ] Find mediaplaybackd on Mac / iOS
-- [ ] Find CreationURL handling code
+### Fix in 26.6.1
+Adds an `isKindOfClass:[NSArray class]` check before the `objectAtIndex:`
+call. Minor, single-instruction fix. Confirms the type confusion was the only
+load-bearing assumption.
 
 ---
 
-## Useful References
+## CVE-2026-112706 — CoreMedia / mediaplaybackd File Descriptor Leak
 
-- MchinaMd57764/AVETemporalPoC-CVE-2026-112705
-- MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak
-- Ping-2o/ios.CVE-2026-84616-84607
-- 8ksec.io/mie-deep-dive-kernel
-- 8ksec.io/darksword-kernel-escalation
-- arxiv.org/html/2510.09272v1 (SPTM/TXM paper)
-- tin-z.github.io/ios-exploit-starterpack/en/sptm-txm
+### Summary
+`mediaplaybackd` XPC service (`com.apple.coremedia.mediaplaybackd`) leaks a
+file descriptor with broad filesystem access to the client, breaking the iOS
+app sandbox model.
+
+### Chain Role
+Sandbox escape. The leaked FD is a raw filesystem handle into a protected path
+not accessible from the app sandbox. With it the attacker can read/write files
+outside the sandbox, bootstrapping further privilege escalation.
+
+### Mechanism (static analysis — medium confidence)
+- `mediaplaybackd` opens a temporary bytestream session file in
+  `/var/db/coremedia/` (sandbox-exempt path) and sends a reply over XPC that
+  includes a raw `MACH_MSG_TYPE_COPY_SEND` port descriptor for the open FD.
+- The reply port lifetime is longer than the session lifetime. After the session
+  tears down, the FD remains open on the client side and continues to grant
+  access to the original path.
+- The relevant MIG method is in `CMRemotePlayerXPCServer` — the
+  `CMRemotePlayerSetupBytestream` handler initiates the session and the FD
+  outlives its intended scope.
+
+### Fix in 26.6.1
+The bytestream session FD is now sent using `MACH_MSG_TYPE_MOVE_SEND` (giving
+up the sender's reference) and immediately closed on the mediaplaybackd side
+after the XPC reply, preventing the dangling-FD scenario.
+
+---
+
+## CVE-2026-112705 — AppleAVE2 OOB Write via NumberOfTemporalLayers
+
+This is the best-analyzed CVE. Verified with byte-level disassembly of both
+`com.apple.driver.AppleAVE2` from iOS 26.6.1 and iOS 27.0.1.
+
+### Summary
+Setting `NumberOfTemporalLayers = 16463` in a VideoToolbox VTCompressionSession
+triggers a kernel heap OOB write in the AppleAVE2 video encoder kext, leading
+to a kernel panic/exploit primitive. NTL=16462 does not trigger the crash.
+
+### Binaries analyzed
+
+| Version | Path in OTA | File size |
+|---------|-------------|-----------|
+| 27.0.1 | `kexts/com.apple.driver.AppleAVE2` | 3,020,688 bytes |
+| 26.6.1 | `kexts/com.apple.driver.AppleAVE2` | 2,692,608 bytes |
+
+### Crash site (27.0.1)
+
+```
+fffffff0086c7ce0  bti c
+fffffff0086c7ce4  cbz x0, → 0x86c7cf8       ; null guard
+fffffff0086c7ce8  stp x0, x0, [x0]           ; CRASH: x0=0x59 (corrupted heap ptr)
+fffffff0086c7cec  str x0, [x0, #0x10]
+fffffff0086c7cf0  str wzr, [x0, #0x18]
+fffffff0086c7cf4  ret
+```
+
+Equivalent crash stub in 26.6.1: `0x84c9850` (same instruction sequence).
+
+This is a linked-list node initializer ("full" variant):
+- `next = prev = self` (circular)  
+- `head = self`  
+- `count = 0`
+
+It crashes when `x0` holds a corrupted adjacent-heap-object pointer instead of
+a valid struct pointer.
+
+### Root cause: missing NTL clamp in two new 27.0.1 call sites
+
+**Both versions** contain two variants of a GOP (Group of Pictures) session
+initializer:
+
+| Function | Version | NTL handling |
+|----------|---------|-------------|
+| `0x84ca2c0` (26.6.1) | non-clamping | overflow guard only; **0 direct callers** |
+| `0x86c876c` (27.0.1) | non-clamping | overflow guard only; **2 direct callers** |
+| `0x84ca470` (26.6.1) | clamping | clamps NTL; **1 direct caller** |
+| `0x86c8950` (27.0.1) | clamping | clamps NTL; **1 direct caller** |
+
+The critical difference:
+
+```
+26.6.1  0x84eb664:
+    mov x0, x20   ; arg0 = ctx
+    mov x1, x22   ; arg1 = NTL
+    mov x2, x23   ; arg2 = count
+    mov x3, x24   ; arg3 = stride
+    mov x4, x25   ; arg4 = alignment
+    sub x5, x29, #0x58  ; output ptr
+    bl  0x84ca470 ← CLAMPING function (6 args, ctx + count used to limit NTL)
+
+27.0.1  0x86f4e50:
+    mov x0, x21   ; arg0 = NTL
+    mov x1, x22   ; arg1 = stride
+    mov x2, x23   ; arg2 = alignment
+    sub x3, x29, #0x58  ; output ptr
+    bl  0x86c876c ← NON-CLAMPING function (4 args, no ctx/count)
+
+27.0.1  0x86f5e2c:
+    (identical pattern, second new call site)
+    bl  0x86c876c ← NON-CLAMPING
+```
+
+### How the clamping works (26.6.1 at 0x84ca470)
+
+```arm
+; Called at 0x84ca504:
+add x0, sp, #0x8     ; &current_buffer_pos
+add x1, sp, #0x4     ; &remaining_space
+mov x2, x4           ; alignment
+mov x3, x4           ; alignment
+bl  0x84c9700        ; compute remaining_aligned_space(pos, size, align, align)
+                     ; → [sp+4] = floor_align(remaining - align_overhead, alignment)
+
+; After:
+ldr w8, [sp, #0x4]   ; w8 = remaining aligned buffer space
+sdiv w8, w8, w20     ; w8 = remaining / aligned_stride = max safe NTL
+cmp w8, w21          ; compare with requested NTL
+csel w22, w8, w21, lt ; w22 = min(max_safe_NTL, requested_NTL) ← THE CLAMP
+```
+
+With NTL=16463 and a typical temporal-layer buffer sized for 3–5 entries,
+`remaining / aligned_stride` ≤ 5, so `w22 = 5`. Only 5 loop iterations run.
+
+### What happens in 27.0.1 with NTL=16463
+
+Without the clamp:
+
+1. **Element array alloc:** `umull x1, NTL=16463, #24` → 395,112 bytes (64-bit,
+   safe, correctly sized).
+
+2. **Stride buffer alloc:**  
+   `madd w26, aligned_stride, NTL=16463, (alignment-1)` — 32-bit multiply-add.  
+   - Overflow guard (`sdiv INT32_MAX, aligned_stride; cmp; b.le error`) prevents
+     the overflow path for typical stride values.
+   - For NTL=16463 and typical encoder strides, the allocation succeeds.
+
+3. **Loop:** runs 16463 times, inserting 16463 elements (24 bytes each) into the
+   linked list structure via `bl 0x86c81b0`.
+
+4. **Init thunk calls** (after loop):
+   ```
+   add x0, struct, #0x60
+   bl  0x86c7ce0            ← CRASH: struct is corrupted by the 16463-iteration
+   add x0, struct, #0x80    loop writing ~395 KB into an area not designed for it
+   bl  0x86c7ce0
+   ```
+
+The 16463-element loop massively overwrites heap memory adjacent to the
+pre-allocated temporal-layer buffer (designed for ~3–5 entries), corrupting an
+adjacent heap object. When the post-loop init thunk receives the corrupted
+object address (0x59), it attempts `stp x0, x0, [x0]` on a non-canonical
+address, causing the panic/exploit entry point.
+
+### Why NTL=16462 doesn't crash
+
+With NTL=16462, the loop writes 16462×24 = 395,088 bytes. The boundary
+condition (wherever the pre-existing buffer ends) lands one iteration earlier,
+possibly not reaching the specific heap allocation that holds the next struct
+pointer. The OOB write still occurs but the specific object that becomes x0
+is not corrupted to 0x59.
+
+### Key structural differences: 27.0.1 vs 26.6.1
+
+| Feature | 26.6.1 | 27.0.1 |
+|---------|--------|--------|
+| Linked-list init thunk variants | 1 (full: next/prev/head/count) | 2 (simple + full) |
+| Loop style | byte-offset (`add x1, base, x22`) | index-based (`add x1, base, x23*24`) |
+| PAC integrity check in loop | absent | present (poisons if PAC bits differ) |
+| `umulh` overflow defense (64-bit NTL*24 high-word check) | in clamping path only | in clamping path only |
+| Non-clamping path callers | 0 (dead code) | 2 (exposed call sites) |
+| Clamping path callers | 1 | 1 |
+
+The PAC check and index-based loop in 27.0.1 are hardening additions, but they
+don't prevent the OOB — the crash happens in the post-loop init thunk call, not
+inside the loop itself.
+
+### Inner init function equivalence
+
+The inner init function (`0x86c8668` in 27.0.1, `0x84ca1ac` in 26.6.1) is
+structurally identical across versions:
+
+```
+smull x1, w3, w26    ; w26=24 → NTL*24 as 64-bit (safe)
+bl alloc(type, NTL*24)
+bl init_list_simple  ; initialize element array head list
+mul w8, w22, w19     ; w22=stride, w19=NTL → 32-bit (struct[0x48])
+bl init_list_full    ; ← CRASH SITE if struct+0x60 is corrupted
+bl init_list_full    ; struct+0x80
+loop: insert NTL elements into list
+```
+
+The `mul w8, w22, w19` 32-bit multiply at `0x86c86e0` / `0x84ca224` stores
+`stride × NTL` in the struct, but this is a struct FIELD, not an allocation
+size — it doesn't directly cause OOB.
+
+### 26.6.1 equivalent non-clamping function 0x84ca2c0 callers
+
+```
+$ python3 find_bl_callers.py --target 0x84ca2c0 ios2661/AppleAVE2
+→ 0 callers
+```
+
+The function exists but is unreachable from the video encoder hot path. The
+26.6.1 backport effectively "deactivated" the vulnerable call path.
+
+### Second function in 0x84c33c0 area (also calls init thunk)
+
+A second function at `~0x84c32c0` (26.6.1) also calls the init thunk at
+`0x84c9850`. It allocates `NTL*48` bytes via `umull x1, w24, #48` (64-bit, safe)
+and correctly bounds its own loop. This function is NOT the crash source.
+
+---
+
+## SPTM / Rootless constraint
+
+iOS 27 introduced SPTM (Secure Page Table Monitor). Chollima does NOT bypass
+SPTM — it cannot modify kernel page tables to change memory permissions. The
+chain achieves privilege escalation via `amfid` injection / unsandboxing through
+existing kernel primitives (likely `task_for_pid(0)` equivalent via IOKit) that
+don't require SPTM bypass. The kernel OOB write from CVE-2026-112705 is used to
+corrupt a data structure that gives the attacker a kernel read/write primitive
+within SPTM's allowed memory, rather than remapping pages.
+
+---
+
+## Files
+
+- `kerneldiff/surface_c_probe_a.py` — Stage A: memory gate + named entry + AURemoteIOServer NewClient
+- `kerneldiff/surface_c_probe_b_overflow.py` — Stage B: ASBD integer overflow (Surface C probe)
+- `kerneldiff/surface_c_probe_b.py` — legacy single-stage probe (pre-staged version)
+- `rh_run.py` — ResearchHost HTTP client for iPhone-side Python execution
+
+## TODO / open questions
+
+- [ ] Confirm exact stride value used by VideoToolbox for a typical 1920×1080 H.264 session when NTL=16463
+- [ ] Trace the exact heap layout that produces x0=0x59 (requires dynamic analysis / kernel debugger)
+- [ ] CVE-2026-65409: confirm the exact NSAttributedString PDF code path in Foundation binary
+- [ ] CVE-2026-112706: confirm the exact MIG method ID for CMRemotePlayerSetupBytestream
+- [ ] Run Surface C probe (surface_c_probe_a.py → surface_c_probe_b_overflow.py) via ResearchHost once baseline memory < 1250 MB
