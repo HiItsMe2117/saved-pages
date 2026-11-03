@@ -17,9 +17,17 @@ CVE-2026-112705 (AppleAVE2)    → kernel privilege escalation via OOB write
 ```
 
 "Chollima" was demonstrated as **untethered** (reboot-persistent). Whether it includes an
-SPTM (Secure Page Table Monitor) bypass is **disputed** — one secondhand tweet claims SPTM
-bypass; Calif.io has not confirmed this. The chain reaches kernel r/w via data-structure
-corruption without confirmed SPTM bypass.
+SPTM bypass is **almost certainly no** — no public bypass exists for A15+/iOS 17.4+ and the
+only secondhand claim comes from a single unverified tweet. The chain reaches kernel r/w via
+data-only struct corruption, consistent with a rootless design.
+
+**iOS 26 / A18 security layer summary (relevant to exploitation model):**
+- **SPTM**: present on A15+ since iOS 17; no public bypass for A18/iOS 18+
+- **PAC (FPAC)**: hardware-enforced on A15+; pointer forgery not viable
+- **BTI**: confirmed in AppleAVE2 binary (bti c instructions)
+- **Hardware MTE**: A19/M5 only — **NOT present on A18 (iPhone 16)**
+- **Software MTE**: iOS 26 enables software MTE enhancements for kernel and ~70 userland processes; raises the bar but bypassable by data-only chains
+- **Exclaves / hypervisor**: iOS 26 introduces a hardware hypervisor layer above SPTM (research ongoing — `cloverfield11/ios26-hypervisor-research`); implications for the exploitation model are not yet understood
 
 ---
 

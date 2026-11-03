@@ -19,22 +19,26 @@
 **SPTM impact on exploit model:**
 - iOS 18 / pre-SPTM: OOB write → corrupt pointer → forge kernel pointer → write to page table → escalate
 - iOS 26 / SPTM: OOB write → must corrupt data structure within SPTM-permitted memory → build primitive via data-only path
-- Page table writes, PPL region writes: blocked at hardware level. No bypass confirmed for A18.
-- The Chollima chain is "untethered" but SPTM bypass is disputed. If rootless: must achieve persistence via data-only means.
+- Page table writes, PPL region writes: blocked at hardware level. No public bypass for A15+/iOS 17.4+. Chollima almost certainly rootless.
+- Known SPTM bypass research (Rocket, Titan) only covers A14–A17, iOS 16–17.3.1 — NOT applicable to our target.
 
-**MTE impact:**
-- Hardware-enforced heap tag checking (16-byte granules, 4-bit tags)
-- Tags are checked on LOAD (async mode): the OOB WRITE may succeed but a subsequent READ of the corrupted granule with the wrong tag will fault
-- This affects HOW you land the corruption — you need to hit a granule with a compatible or zero tag
-- The AppleAVE2 crash (x0=0x59) is a DATA ABORT on a WRITE (stp x0,x0,[x0]) — this suggests the corruption reached the init_list_head stage before MTE caught a load
-- OR: the OOB write targets a region not protected by MTE (kalloc_type allocations may have tag=0 for some types)
+**MTE — CRITICAL CORRECTION:**
+- **Hardware MTE is A19/M5 only. Our target (iPhone 16+, A18) does NOT have hardware MTE.**
+- iOS 26 does add software MTE enhancements for the kernel and ~70 userland processes — raises the bar but data-only chains bypass it
+- The AVE2 crash (x0=0x59) is a DATA ABORT on a WRITE (`stp x0,x0,[x0]`) — consistent with no MTE on A18 stopping it earlier
+
+**Exclaves / hypervisor layer (new — iOS 26 only):**
+- iOS 26 introduces a hardware hypervisor layer sitting above SPTM (`cloverfield11/ios26-hypervisor-research`)
+- This layer is entirely undocumented publicly and its effect on data-only exploitation is unknown
+- TXM shift (iOS 26→27): some kernel security checks moved to TXM between versions (see `dylanneve1/scion`)
+- **Gap:** We don't know if Exclaves intercepts any of the operations in the Chollima chain
 
 **FPAC / PAC impact:**
-- x0=0x59 is NOT a valid PAC-signed pointer — this crash confirms the exploit corrupts a value to 0x59 which is then used as a raw pointer
-- In a working exploit you would NOT forge a PAC pointer — instead you'd corrupt a NON-POINTER field (integer, size, index) and use it to build a read/write primitive without ever needing to control PC
+- x0=0x59 is NOT a valid PAC-signed pointer — crash confirms the corruption produces a raw, non-authenticated pointer
+- Correct exploit approach: corrupt a NON-POINTER field (integer, size, index) so you never need to forge a PAC
 - This is the "data-only" approach: corrupt struct fields that influence memory layout/access, not function pointers
 
-**Conclusion:** Our binary analysis IS mostly appropriate for iOS 26 — we correctly identified a data structure corruption (linked list head pointer to 0x59) rather than a code pointer. The SPTM constraint means the Chollima chain likely uses the OOB to corrupt something like a `struct ipc_port` field, a `task_t` pointer, or similar kernel objects that let you escalate without modifying page tables.
+**Conclusion:** Our binary analysis is appropriate for iOS 26 — we correctly identified data structure corruption, not code pointer hijack. The SPTM + no-hardware-MTE + PAC constraint means the Chollima chain likely corrupts something like a `struct ipc_port` field or `task_t` reference to build kernel r/w without touching page tables. The Exclaves layer is the one unknown we haven't accounted for.
 
 ---
 
@@ -65,9 +69,10 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 ### What we haven't reviewed
 - **Checkra1n / unc0ver / Dopamine / Fugu15 / palera1n** primitive techniques — how they converted OOB writes to kernel r/w before SPTM
 - **Project Zero iOS kernel research** (Ian Beer et al.) — deep technical writeups on IOKit, Mach port, IPC exploitation
-- **Prior audio/video kext exploits** — whether AppleAVE or similar kexts have been exploited before, what primitives they gave
+- **ziVA (Zimperium 2017)** — Adam Donenfeld found 7 AppleAVE2Driver vulns chained on iOS ≤10.3.1, all via MIG `SetSessionSettings` (method 7). Same driver module. **We have not checked whether this MIG interface still exists in 26.6.1 with new exploitable conditions.**
+- **CVE-2019-8795** — missing bounds check in `AppleAVE2Driver::SetSessionSettings` (MIG method index 7), patched iOS 13.2. Is method 7 in 26.6.1? Is it the same handler?
 - **SPTM internals research** — any public analysis of what SPTM protects and what it doesn't
-- **Post-SPTM iOS 17/18 kernel exploit techniques** — how exploits adapted after SPTM was introduced on A17 Pro (iPhone 15 Pro)
+- **Post-SPTM iOS 17/18 kernel exploit techniques** — specifically: CVE-2025-43520 (DarkSword, iOS 18) used socket/inpcb struct corruption for data-only kernel r/w with no SPTM bypass; this is the closest template to our situation
 
 **Gap:** We're missing the "what primitives have worked on iOS 17/18 post-SPTM A17" baseline. Before looking for new paths, we should catalog what's been demonstrated to work in that regime.
 
@@ -103,17 +108,22 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 
 ### What we've covered
 - AppleAVE2 `kVTCompressionPropertyKey_NumberOfTemporalLayers` overflow (CVE-2026-112705) — deep
-- CoreMedia mediaplaybackd FigXPC FD leak (CVE-2026-112706) — surface-level
+- CoreMedia mediaplaybackd FigXPC FD leak (CVE-2026-112706) — surface-level; PoC repos exist, not examined
 - Foundation PDF type confusion (CVE-2026-65409) — unconfirmed mechanism
 - Surface C probe: AURemoteIOServer ASBD overflow (CVE-2026-113912) — probe written, not run
 
+### CVE-2026-112706 PoC repos (not yet examined)
+Public PoC code exists: `MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak` and `794pn2s6fh-hub/cve-112706`.
+- "FigXPC memory-origin handshake completes with status 0 for unprivileged client" — unauthenticated handshake step is the leverage point
+- "Fix was incomplete in iOS 27.0 — auxiliary opcodes still affected on iOS 26.5" — may still be usable on our target
+
 ### Novel surfaces not yet explored
-- **Other VTCompressionSession properties**: Are there other numeric properties that flow into unchecked 32-bit arithmetic in AppleAVE2 or AppleANE?
-- **Other audio kexts**: AppleAudioKext, AppleSEPManager — do they have similar MIG/XPC-level integer surfaces?
-- **IOKit surfaces**: The classic iOS exploit surface. We haven't surveyed IOKit drivers for integer overflows or type confusions specific to A18.
-- **Other FigXPC services**: If CVE-2026-112706 is in `mediaplaybackd.bytestream.xpc`, are there other `*.bytestream.xpc` or FigXPC-based services with similar patterns?
-- **NVMe / DART surfaces**: The second trigger found (32768×16384 dimensions → DART PTE-invalid write) suggests a DIFFERENT bug in the AVE pipeline. This is unexplored.
-- **Kernel extensions added/changed in iOS 26**: What new kexts shipped with iOS 26 that have no iOS 18 equivalent? These are highest-probability for novel surfaces.
+- **AppleAVE2 MIG/IOKit interface (high priority)**: ziVA (2017) and CVE-2019-8795 both hit `AppleAVE2Driver::SetSessionSettings` (MIG method 7) directly. We've only analyzed the VideoToolbox→gop_config path. The raw IOKit dispatch table is a parallel entry surface we haven't touched.
+- **DART / frame dimension trigger**: 32768×16384 dimensions → DART PTE-invalid write fault — completely different bug in AVE pipeline, unexplored. May be a lower-bar surface.
+- **Other VTCompressionSession properties**: Are there other numeric properties flowing into unchecked 32-bit arithmetic in AppleAVE2 or AppleANE?
+- **Other FigXPC services**: Are there other `*.bytestream.xpc` services with the same unauthenticated handshake pattern?
+- **Heap zone analysis for AVE2 OOB**: CVE-2025-24257 (IOGPUFamily OOB) was assessed unexploitable because "data heap contains no pointers." Need to verify AVE2's kalloc zone contains pointer fields, otherwise our OOB is DoS-only by design.
+- **Kernel extensions new in iOS 26**: Kexts with no iOS 18 equivalent = highest-probability novel surfaces. Not inventoried.
 
 ---
 
@@ -138,15 +148,19 @@ The 32-bit overflow fingerprint (NTL=16463: x0=0x59, NTL=16464: x0=0x100000059) 
 
 **High:**
 1. Run the Surface C probe (surface_c_probe_a → surface_c_probe_b_overflow) when memory < 1250 MB
-2. Switch to r2 analysis mode (`aaa`) + `axt` for all future caller scans
-3. Identify what iOS 17/18 post-SPTM exploit primitives have been publicly documented
+2. Switch to r2 analysis mode (`aaa`) + `axt` for all future caller scans — eliminates manual Python BL scripts
+3. Read CVE-2026-112706 PoC repos (`MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak`, `794pn2s6fh-hub/cve-112706`) — code exists, we haven't looked
+4. Check AppleAVE2 MIG dispatch table in 26.6.1 — prior bugs (ziVA, CVE-2019-8795) hit method 7; is it still present?
+5. Verify AVE2 kalloc zones contain pointer fields — prerequisite for knowing if OOB is exploitable vs DoS-only
 
 **Medium:**
-4. Set up Ghidra analysis of AppleAVE2 on Mac for function-level decompilation
-5. Analyze the DART / 32768×16768 dimension trigger — may be a separate, easier-to-exploit surface
-6. Survey other VTCompressionSession properties for similar integer-overflow patterns
+6. Study DarkSword (CVE-2025-43520, iOS 18) data-only primitive technique — closest public template to our situation
+7. Set up Ghidra on Mac for AppleAVE2 decompilation — pseudocode output for `0x84ec038`/`0x84ca290` would validate our pseudocode
+8. Analyze the DART / 32768×16384 dimension trigger — separate AVE bug, may be lower-bar surface
+9. Document Exclaves/hypervisor layer implications for iOS 26 exploitation — `cloverfield11/ios26-hypervisor-research`
 
 **Low:**
-7. Confirm Foundation CVE-2026-65409 mechanism in binary (DoS vs code execution)
-8. Analyze FigXPC protocol surface more broadly (other services)
-9. Build formal attack surface registry doc
+10. Confirm Foundation CVE-2026-65409 mechanism in binary (DoS vs code execution)
+11. Survey other VTCompressionSession properties for similar integer-overflow patterns
+12. Survey other FigXPC services for unauthenticated handshake pattern
+13. Build formal attack surface registry and binary/tool inventory docs
