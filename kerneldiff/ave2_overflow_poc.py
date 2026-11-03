@@ -16,7 +16,7 @@ Root cause (revised):
 
 Usage: run via offload_python MCP on iPhone 26.6.1.
 """
-import ctypes as C
+import ctypes as C, sys
 
 CF = C.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
 VT = C.CDLL("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox")
@@ -119,12 +119,14 @@ def probe_ntl(ntl):
 
 print(f"4K HEVC NTL overflow ladder — {WIDTH}x{HEIGHT}")
 print(f"DPB unit estimate: {(WIDTH//64+1) * (HEIGHT//64+1) * 1024} bytes")
-print(f"Overflow threshold: NTL ≥ {(1<<32) // ((WIDTH//64+1) * (HEIGHT//64+1) * 1024)}")
-print()
+print(f"Overflow threshold: NTL >= {(1<<32) // ((WIDTH//64+1) * (HEIGHT//64+1) * 1024)}")
+sys.stdout.flush()
 
-# Ladder: safe baseline, then ramp toward overflow threshold
+# Ladder: safe baseline, ramp past overflow threshold
+# Print + flush BEFORE the probe so partial output survives a hard kill
 for ntl in [1, 100, 500, 1000, 2000, 2056, 2100, 2500, 3000, 4096, 8192, 16000, 16462]:
+    print(f"  NTL={ntl:6d}: STARTING", flush=True)
     result = probe_ntl(ntl)
-    print(f"  NTL={ntl:6d}: {result}")
+    print(f"  NTL={ntl:6d}: {result}", flush=True)
 
-print("\nDONE")
+print("\nDONE", flush=True)
