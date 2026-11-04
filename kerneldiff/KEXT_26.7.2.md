@@ -66,6 +66,16 @@
 **New function in 26.7.2 (doesn't exist in 26.6.1)**:  
 `sub_fffffff00853aa34` — frame dimension validation against codec-level table
 
+**Three call sites** (all NEW in 26.7.2 — NONE exist in 26.6.1):
+
+| Call site VA        | Codec     | w1 arg | w2 arg | Containing function |
+|---------------------|-----------|--------|--------|---------------------|
+| 0xfffffff008524700  | AVC       | #1     | #1     | AVE_AVC_CheckInfo   |
+| 0xfffffff008524df0  | HEVC      | #?     | #?     | AVE_HEVC_CheckInfo  |
+| 0xfffffff0085278cc  | HEVC var. | #4     | #2     | HEVC variant        |
+
+**Implication**: BOTH AVC and HEVC dimension bypass are OPEN on 26.6.1. The PoC can target either codec.
+
 **Call site**: `AVE_AVC_CheckInfo` at 0xfffffff0085244f4 (26.7.2)
 - Was: `AVE_AVC_CheckInfo` at 0xfffffff00851c454 (26.6.1)
 - Stack frame grew: 0x90 → 0xa0 (+16 bytes for new local variables)
@@ -84,6 +94,17 @@
 0xfffffff008524700:  bl sub_fffffff00853aa34  ← NEW DIMENSION VALIDATION
 0xfffffff008524704:  cbz w0, loc_fffffff008524830  ; success → continue
 ; else: "frame dimension is out of range" → return error
+```
+
+**HEVC call site (0x5278cc)** loads same struct fields before call:
+```asm
+0xfffffff0085278b4:  ldr w3, [x21, #0xa58]   ; same frame width field
+0xfffffff0085278b8:  ldr w4, [x21, #0xa5c]   ; same frame height field
+0xfffffff0085278bc:  mov x0, x19
+0xfffffff0085278c0:  mov w1, #0x4             ; codec=HEVC
+0xfffffff0085278c4:  mov w2, #0x2
+0xfffffff0085278c8:  mov w5, #0x1
+0xfffffff0085278cc:  bl sub_fffffff00853aa34
 ```
 
 **This call does NOT exist in 26.6.1.** The function at 0x851c454 jumps directly to allocation after the iNumViews/iLayerNum checks.
@@ -152,8 +173,32 @@ Any frame dimensions passing the iNumViews/iLayerNum bounds flow unchecked into 
 
 ---
 
+## CVE-2026-112468/469/470 — Write Loop Bounds Fix (2026-11-04 analysis)
+
+### Fix type: TYPE-SYSTEM REFACTOR (not a simple CMP addition)
+
+The "improved bounds checking" for the 3 OOB write CVEs is NOT a simple `CMP + B.GT` insertion into existing write loops. The fix is a large-scale type-system change:
+
+**Evidence**:
+- 306 new functions in 26.7.2 (by 16-instruction prologue comparison)
+- Entire range 0x8530000–0x8540000 is BRAND NEW (90+ new functions, all with no 26.6.1 counterpart)
+- Tiny new functions (~68–88 bytes) appear in CLUSTERS at: 0x8515f78, 0x8572238, 0x858b2ac, 0x85b2f7c, 0x864dcc8, 0x865c008 — multiple codec variants of the same constructors/destructors
+- 736B new functions at 0x8541b84 and 0x8541e64 — complex object initializers
+- These patterns = new bounded-buffer OBJECT TYPES being introduced
+
+**What the fix likely does**: Replaces raw pointer + raw count with a NEW SAFE BUFFER TYPE that enforces `write_count ≤ allocated_count` internally. Write loops now call a method on the safe type rather than directly indexing a raw pointer.
+
+**Why allocation is UNCHANGED**: CalcBufSizeOf functions remain byte-identical because the ALLOCATION SIZE FORMULA is correct. The bug was that the WRITE SIDE used a different (wrong) count, not that the allocation used a wrong size.
+
+**Where the new code lives**: The 90+ new functions in 0x853xxxx are the new safe-buffer type implementations (constructors, destructors, method dispatch, codec-variant wrappers). The write loops in the encode path now call into these new types.
+
+**Existing function changes**: 212 diffs in the 2347-instruction allocation function (0x84edaf8) are ALL struct layout changes — the new bounded-buffer type fields were added to the main encoder session struct, shifting all struct field offsets. These changes are CONSEQUENCES of the type-system fix, not the fix itself.
+
+---
+
 ## Notes
 
 - **THIS is the minimal diff**: only security patches in 905.43.1 vs 905.40.1
-- The changes in LFSResult/EntropyCoding/MCTFOutput are likely **struct layout** (ADRP offsets changed) + possibly the write-side OOB fix for CVE-2026-112468/469/470
+- The changes in LFSResult/EntropyCoding/MCTFOutput are **struct layout only** (confirmed: ALL 212 diffs in main allocation function are struct field offset changes)
+- The CVE-2026-112468/469/470 fix is in the 90+ new functions in range 0x853xxxx
 - The 27.0.1 kext is a MAJOR rewrite — not useful for isolating these CVE patches

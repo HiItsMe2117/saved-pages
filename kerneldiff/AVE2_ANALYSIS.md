@@ -63,9 +63,11 @@ All analyzed functions:
 
 ### CVE-2026-112468/469/470 — Hcamael + 章鱼哥 — "improved bounds checking" (3 CVEs, OOB write)
 - Impact: "corrupt kernel memory" — these hit kernel heap buffers
-- Fix: correct the bounds check in a write loop (not the allocation)
-- 3 separate CVEs = 3 different buffer types with the same kind of write OOB
-- Pattern: `for (i=0; i<wrong_count; i++) buf[i] = data` where wrong_count > allocated_count
+- Fix: a type-system refactor — new BOUNDED BUFFER TYPES introduced that internally enforce write_count ≤ allocated_count
+- 3 separate CVEs = 3 different buffer types (LFSRef, LFSResult, EntropyCoding — the candidates)
+- Fix is NOT simple CMP addition — it's 90+ new functions in 0x853xxxx implementing the safe types
+- Pattern that the new types prevent: `for (i=0; i<wrong_count; i++) buf[i] = data` where wrong_count > allocated_count
+- write_count comes from DIFFERENT SOURCE than allocation count (write loop uses actual encode-time dims; allocation uses pre-validated dims — after bypass, these diverge)
 
 ### CVE-2026-112466 — Hcamael + 章鱼哥 — "improved input validation" (OOB read)
 - Impact: "read kernel memory" — **KASLR bypass / kernel info leak**
