@@ -555,7 +555,7 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE 2026-11-04 → Both Surface C and Surface AVE2 (E) CLOSED. Common blocker: DART IOMMU for coprocessor-DMA surfaces, EXC_GUARD for audiomxd MIG. All firmware-DMA OOB paths are architecturally blocked. Pivoting to CPU-side kernel overflows (host CPU in kernel VAS, no DMA).**
+**← RESUME HERE 2026-11-04 → Pivoting to CPU-side kernel overflows. Full AVE2 kext architecture mapped and committed to `AVE2_ARCH.md`. All 17 CalcBufSizeOf function string VAs mapped; all 93 xrefs located in 16 KB window 0xfffffff0084ec894–0x84f0de8. CalcBufSizeOfMBInputCtrl partially reversed (AVC + HEVC paths). MBInputCtrl has NO NTL multiplier (per-frame buffer). NEXT: disassemble Colocated + LFSRef (reference-frame buffers = NTL multiplier expected) to find CPU-side 32-bit overflow. ios 26.7.2 CVE-2026-112689 (Blackwing) = "improved input validation" = size overflow path; CVEs 112468/469/470 (Hcamael) = "improved bounds checking" = OOB write even with correct size.**
 
 **AVE2 final closure report: `REPORT_surface_ave2_final.md` (2026-11-04)**
 
@@ -654,6 +654,7 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 | `REPORT_SPTM.md` | SPTM binary analysis |
 | `REPORT_27.md` | 26.6.1 → 27.0.1 full kernel diff |
 | `ave2_overflow_poc.py` | Surface E dynamic probe — NTL ladder, AppGroup file logging |
+| `AVE2_ARCH.md` | **AppleAVE2 kext architecture notes** — segment map, pointer encoding, all 17 CalcBufSizeOf VAs, MBInputCtrl partial reversal, CVE mapping |
 | `Latest.md` | **This file** — single source of truth for current state |
 
 *Kernelcaches on disk (NOT in git — regenerate if missing):*
