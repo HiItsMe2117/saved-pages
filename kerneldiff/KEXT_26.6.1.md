@@ -130,9 +130,24 @@
 
 ---
 
+## Already-Patched CVE Context (closed on target)
+
+**CVE-2026-64747** — fixed in iOS 26.6 (before our 26.6.1 target):
+- Component: AVEVideoEncoder (same as our targets)
+- Researcher: Franco Belman, Blackwing Intelligence (same researcher as CVE-2026-112689)
+- Fix: "better size validation" — buffer overflow, kernel privilege escalation (CVSS 7.8)
+- Status on 26.6.1: **ALREADY PATCHED** — 26.6.1 is a point release on top of 26.6
+
+**Implication**: The 26.6.1 kext already has the 64747 "size validation" fix applied. What we see in our 26.6.1 baseline IS the patched version for 64747. The 26.7.2 diff adds CVE-2026-112689 on top of that.
+
+Download iOS 26.5 OTA to see the pre-64747 kext: confirms the pattern and helps identify the still-open 112689 path.
+
+---
+
 ## Notes / Open Questions
 
 - Do any CalcBufSizeOf functions have an **NTL multiplier** in the caller (not in the CalcBufSizeOf itself)?
 - Are there CPU-side WRITE functions that use a different bounds formula than the allocation?
 - Three unanalyzed LFSRef callers — could pass larger shift values
 - The 26.7.2 kext diff will confirm which of the 17 functions was patched
+- The 26.5→26.6.1 diff will show what CVE-2026-64747's "size validation" fix added (reference template)

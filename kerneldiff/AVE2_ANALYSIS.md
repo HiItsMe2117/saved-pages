@@ -63,11 +63,31 @@ All analyzed functions:
 - In 26.6.1: some parameter P flows into a multiplier without `cmp P, MAX_P`
 - In 26.7.2: `cmp P, MAX_P; b.hi error` added before the multiplier
 
-### CVE-2026-112468/469/470 — Hcamael + 章鱼哥 — "improved bounds checking" (3 CVEs)
+### CVE-2026-112468/469/470 — Hcamael + 章鱼哥 — "improved bounds checking" (3 CVEs, OOB write)
+- Impact: "corrupt kernel memory" — these hit kernel heap buffers
 - Fix: correct the bounds check in a write loop (not the allocation)
-- 3 separate CVEs suggests 3 different buffer types with the same kind of write OOB
+- 3 separate CVEs = 3 different buffer types with the same kind of write OOB
 - Pattern: `for (i=0; i<wrong_count; i++) buf[i] = data` where wrong_count > allocated_count
-- The wrong_count was computed from a different formula than the allocation size
+
+### CVE-2026-112466 — Hcamael + 章鱼哥 — "improved input validation" (OOB read)
+- Impact: "read kernel memory" — **KASLR bypass / kernel info leak**
+- Fix: bounds check on input parameter before the read index is computed
+- Likely: same code path as the write CVEs, but a different access (read before write in encode pipeline)
+- **Chain role**: use OOB read first to leak kernel VAs, then use OOB write to corrupt known targets
+
+### CVE-2026-112705 — Calif.io (Marco Schmitt, Andrey Chernykh, Josh Maine) — "improved bounds checking"
+- Impact: "unexpected system termination" only — no kernel corruption
+- Fix: bounds check on a write
+- Likely a buffer in non-critical memory (stack local, or a user-space-visible region) — lower chain value
+- 3-researcher team suggests a separate independent audit, not connected to Hcamael or Blackwing
+
+### Hcamael's Full Chain (open on 26.6.1)
+```
+CVE-2026-112466 (OOB read)  → leak kernel VA → KASLR bypass
+CVE-2026-112468/469/470     → OOB write to known kernel heap target
+                            → type confusion / fake vtable
+                            → kernel R/W primitive
+```
 
 ---
 
@@ -111,6 +131,20 @@ CVE-2026-112689 → undersized CPU-side buffer
 
 | Version | Build  | AVE2 source ver | Notes                                          |
 |---------|--------|-----------------|------------------------------------------------|
-| 26.6.1  | 23G83  | 905.40.1.0.0    | **Target** — 4 CVEs present                   |
-| 26.7.2  | 23H128 | 905.40.x?       | Security patch — 4 CVEs fixed                 |
+| ≤26.5   | ?      | ?               | CVE-2026-64747 **OPEN** (Blackwing/Franco Belman) |
+| 26.6    | ?      | ?               | CVE-2026-64747 fixed — "better size validation" in AVEVideoEncoder |
+| 26.6.1  | 23G83  | 905.40.1.0.0    | **Target** — 26.6 fix applied; CVE-2026-112689/468/469/470 still open |
+| 26.7.2  | 23H128 | 905.40.x?       | CVE-2026-112689/468/469/470 fixed              |
 | 27.0.1  | 24A446 | 905.50+?        | Major rewrite — new encoder features + patches|
+
+**Key insight**: Franco Belman (Blackwing) found TWO separate AVEVideoEncoder bugs:
+- CVE-2026-64747 (26.6 fix): "better size validation" — one parameter left unvalidated
+- CVE-2026-112689 (26.7.2 fix): "improved input validation" — a *different* parameter in adjacent/same code path
+
+The progressive audit pattern suggests the two bugs are in the same function or call chain. The 26.6 fix plugged parameter A; parameter B was missed and found in the follow-up audit.
+
+**Three-way diff strategy** (most informative):
+1. iOS 26.5 kext → 26.6.1 kext: shows what 64747's fix added (reference template)
+2. 26.6.1 kext → 26.7.2 kext: shows what 112689's fix added (the **target open surface**)
+
+Pre-26.6 OTA not yet downloaded. `ipsw download ota --platform ios --version 26.5 --device iPhone17,4`
