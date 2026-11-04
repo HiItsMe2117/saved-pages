@@ -1,6 +1,6 @@
 # iOS Security Research — Latest State
 
-*Last updated: 2026-11-01 | Target: iOS 26.6.1 (iPhone 16 Plus, iPhone17,4)*
+*Last updated: 2026-11-04 | Target: iOS 26.6.1 (iPhone 16 Plus, iPhone17,4)*
 
 ---
 
@@ -555,16 +555,27 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE 2026-11-04 (session 3) → CVE-2026-112689 patch LOCATED in binary.**
+**← RESUME HERE 2026-11-04 (session 4) → CVE-2026-112689 PoC WRITTEN — ready to run on-device.**
 
-**KEY FINDING (session 3):**
+**KEY FINDINGS (sessions 3–4):**
 - `AVE_AVC_CheckInfo` in 26.6.1 (VA 0xfffffff00851c454) does NOT validate frame dimensions
 - In 26.7.2 (VA 0xfffffff0085244f4): NEW call to `sub_fffffff00853aa34` after iNumViews/iLayerNum checks
 - `sub_fffffff00853aa34`: validates frame width/height (struct fields 0xa58/0xa5c) against codec-level macroblock table at `__DATA_CONST.__const` VA 0xfffffff007dbfd88
+- Dimension validator (0x852f9d4) already EXISTS in 26.6.1 — called only from `AVE_Client_CheckGGMInfo` (0x851dd2c), NOT from `AVE_AVC_CheckInfo`
+- **Exploit path**: standard VT H.264 AVC session goes through `AVE_AVC_CheckInfo` (no CheckGGMInfo), so dimension check is skipped on 26.6.1
 - Error string: `"frame dimension is out of range %d %d %d\n"` — added in 26.7.2, absent in 26.6.1
-- TEXT section grew +12,480 bytes; cstring grew +3,599 bytes (all added validation code)
 
-**IMMEDIATE NEXT STEP:** Identify which CalcBufSizeOf function uses frame fields 0xa58/0xa5c and what happens with extreme dimensions (causing overflow). Then draft PoC.
+**EXPLOIT MECHANICS:**
+- Set codec level = Baseline 1.0 (max 99 MBs = 176×144 capacity)
+- Frame = 1920×1080 (8160 MBs actual, or larger)
+- In 26.6.1: AVE_AVC_CheckInfo passes → CalcBufSizeOf allocates buffer for 99-MB level → write loop iterates 8160-MB frame → OOB kernel heap write
+- In 26.7.2: sub_fffffff00853aa34 catches mismatch, returns error "frame dimension is out of range"
+
+**PoC file:** `kerneldiff/ave2_cve_112689_poc.py` (written 2026-11-04)
+- Tests 4 level/dimension combos with 0xAA victim IOSurface corruption detection
+- Run via ResearchHost offload_python. CLOSE POCKETCODE FIRST (memory constraint).
+
+**IMMEDIATE NEXT STEP:** Run PoC on-device. Observe whether VT accepts low-level + large-frame session and whether IOSurface victims get corrupted.
 
 **Reference files**: KEXT_26.6.1.md, KEXT_26.7.2.md, AVE2_ANALYSIS.md
 
