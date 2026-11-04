@@ -555,7 +555,33 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE 2026-11-04 → Both Surface C and Surface AVE2 (E) CLOSED. Common blocker: DART IOMMU for coprocessor-DMA surfaces, EXC_GUARD for audiomxd MIG. All firmware-DMA OOB paths are architecturally blocked. Pivoting to CPU-side kernel overflows (host CPU in kernel VAS, no DMA). Diff-mining 27.0.1 for CPU-side candidates.**
+**← RESUME HERE 2026-11-04 → Both Surface C and Surface AVE2 (E) CLOSED. Common blocker: DART IOMMU for coprocessor-DMA surfaces, EXC_GUARD for audiomxd MIG. All firmware-DMA OOB paths are architecturally blocked. Pivoting to CPU-side kernel overflows (host CPU in kernel VAS, no DMA).**
+
+**AVE2 final closure report: `REPORT_surface_ave2_final.md` (2026-11-04)**
+
+### CPU-Side Overflow Candidates (ranked, 2026-11-04)
+
+| Rank | Surface | Path | Why CPU-side | Status |
+|------|---------|------|-------------|--------|
+| 1 | **FigXPC / CVE-2026-112706** | XPC → mediaplaybackd | Runs in daemon on host CPU; no DMA | **UNEXPLORED — start here** |
+| 2 | **AVE2 IOKit SetSessionSettings (MIG method 7)** | IOKit user client → kext handler on host CPU | Completely separate from DPB/DART path; ziVA lineage | **UNEXPLORED — IOServiceOpen blocked from sandbox** |
+| 3 | **Surface C numFrames bypass** | Raw MIG → audiomxd | Server overflow confirmed in disasm; EXC_GUARD blocker | **Needs EXC_GUARD bypass first** |
+| 4 | **Surface 5 / vm_sanitize wrap** | Kernel trap | 4 explicit ADDS+B.CS guards found in MMME64 | Likely CLOSED per static analysis |
+
+**Rank 1 — FigXPC (CVE-2026-112706):**  
+- `mediaplaybackd` XPC, host CPU, no DART  
+- GAP_ANALYSIS: "Fix was incomplete in iOS 27.0 — auxiliary opcodes still affected on iOS 26.5" → likely 26.6.1 too  
+- Public PoC: MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak  
+- Low memory footprint: just an XPC call, no AV hardware warmup  
+- XPC service names confirmed in kernelcache strings: `com.apple.coremedia.mediaplaybackd.*`  
+- **Next action:** Read PoC, adapt to run via ResearchHost, probe on-device  
+
+**Rank 2 — AVE2 IOKit SetSessionSettings:**  
+- `AppleAVE2UserClient` confirmed in kernelcache strings  
+- IOKit MIG dispatch runs on host CPU in kernel — no DART involved  
+- `IOServiceOpen` blocked from sandbox, BUT: could be reachable via VideoToolbox → VTD XPC proxy  
+- ziVA (2017) + CVE-2019-8795 both exploited method 7 on older iOS  
+- **Next action:** Disassemble AppleAVE2 kext in kernelcache, find method 7 handler, check if reachable via VT API layer  
 
 0. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
