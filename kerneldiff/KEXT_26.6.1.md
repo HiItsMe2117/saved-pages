@@ -144,10 +144,37 @@ Download iOS 26.5 OTA to see the pre-64747 kext: confirms the pattern and helps 
 
 ---
 
+## CVE-2026-112689 — Open Surface Confirmed (2026-11-04)
+
+### What 26.6.1 is MISSING (added in 26.7.2):
+
+`AVE_AVC_CheckInfo` in 26.6.1 is at **0xfffffff00851c454** (1100 bytes).  
+In 26.7.2 it's at 0xfffffff0085244f4 (larger, with new frame dimension check).
+
+The 26.6.1 version validates:
+- `[x1, #0x2df8]` — sub 1, compare ≤ 2 → iNumViews bound  
+- `[x21, #0x2df4]` — sub 1, compare ≤ 2 → iLayerNum bound  
+- Then proceeds directly to CalcBufSizeOf allocation with frame fields [x21, #0xa58] / [x21, #0xa5c]
+
+**MISSING**: After passing iNumViews/iLayerNum bounds, 26.6.1 does NOT call `sub_fffffff00853aa34` (which validates frame dimensions against codec-level macroblock table).
+
+### Exploit path (CVE-2026-112689):
+
+1. Create VideoToolbox session with valid iNumViews=1, iLayerNum=1
+2. Set frame dimensions (struct offsets 0xa58/0xa5c) to values that cause CalcBufSizeOf to overflow/undercompute
+3. AVE_AVC_CheckInfo passes → kernext proceeds to allocate undersized buffer  
+4. Write loop uses actual dimensions → OOB kernel heap write
+
+**Key frame dimension fields**:
+- `[x21, #0xa58]` → passed as arg3 to dimension checker (width-related)
+- `[x21, #0xa5c]` → passed as arg4 to dimension checker (height-related)
+
+---
+
 ## Notes / Open Questions
 
 - Do any CalcBufSizeOf functions have an **NTL multiplier** in the caller (not in the CalcBufSizeOf itself)?
 - Are there CPU-side WRITE functions that use a different bounds formula than the allocation?
 - Three unanalyzed LFSRef callers — could pass larger shift values
-- The 26.7.2 kext diff will confirm which of the 17 functions was patched
 - The 26.5→26.6.1 diff will show what CVE-2026-64747's "size validation" fix added (reference template)
+- Next: identify which specific CalcBufSizeOf function uses [x21, #0xa58] / [x21, #0xa5c] directly

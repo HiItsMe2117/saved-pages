@@ -555,20 +555,18 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE 2026-11-04 (session 2) → Deep analysis of all 17 CalcBufSizeOf functions in 26.6.1 kext COMPLETE. Key finding: ALL arithmetic paths require unreachable resolutions (>50K px per side) to overflow. The CVE pattern is NOT simple CalcBufSizeOf arithmetic overflow. See AVE2_ANALYSIS.md for full analysis.
+**← RESUME HERE 2026-11-04 (session 3) → CVE-2026-112689 patch LOCATED in binary.**
 
-IMMEDIATE NEXT STEP: Binary diff of 26.6.1 vs 26.7.2 kexts. Both kexts available on Mac:**
-- **26.6.1**: `~/kerneldiff_ave2/23G83__iPhone17,4/kexts/com.apple.driver.AppleAVE2`
-- **26.7.2**: kernelcache at `~/kerneldiff_ave2/26_7_2/` — run `ipsw kernel extract <kc> "com.apple.driver.AppleAVE2" --output ~/kerneldiff_ave2/26_7_2/kexts` to extract the kext
-- **27.0.1**: `~/kerneldiff_ave2/27_0_1/kexts/com.apple.driver.AppleAVE2` (extracted, major rewrite)
+**KEY FINDING (session 3):**
+- `AVE_AVC_CheckInfo` in 26.6.1 (VA 0xfffffff00851c454) does NOT validate frame dimensions
+- In 26.7.2 (VA 0xfffffff0085244f4): NEW call to `sub_fffffff00853aa34` after iNumViews/iLayerNum checks
+- `sub_fffffff00853aa34`: validates frame width/height (struct fields 0xa58/0xa5c) against codec-level macroblock table at `__DATA_CONST.__const` VA 0xfffffff007dbfd88
+- Error string: `"frame dimension is out of range %d %d %d\n"` — added in 26.7.2, absent in 26.6.1
+- TEXT section grew +12,480 bytes; cstring grew +3,599 bytes (all added validation code)
 
-**Diff methodology**: Find changed functions by comparing __TEXT_EXEC sections byte-by-byte. Any function that changed in 26.7.2 but not in an architecturally-unrelated way = patched CVE. Look for: `mul` → `smull`, new `cmp wX, #N; b.gt error` before multiplies, changed loop bounds.
+**IMMEDIATE NEXT STEP:** Identify which CalcBufSizeOf function uses frame fields 0xa58/0xa5c and what happens with extreme dimensions (causing overflow). Then draft PoC.
 
-**26.7.2 CalcBufSizeOf should have SAME 17 names as 26.6.1 (same codebase, just patched).**
-
-**27.0.1 comparison notes**: LFSRef renamed to LFSOutput, DPB extracted from Recon, 5 new SrcNeighbor types. 27.0.1 is a major rewrite — only use to confirm same functions changed in both patches.
-
-**Reference files**: KEXT_26.6.1.md, KEXT_26.7.2.md, KEXT_27.0.1.md, AVE2_ANALYSIS.md**
+**Reference files**: KEXT_26.6.1.md, KEXT_26.7.2.md, AVE2_ANALYSIS.md
 
 **AVE2 final closure report: `REPORT_surface_ave2_final.md` (2026-11-04)**
 

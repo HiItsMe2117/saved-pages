@@ -47,21 +47,19 @@ All analyzed functions:
 - **Legacy paths** (level < 30): use 32-bit `mul` → overflow requires extreme resolutions
 - **Resolution limit**: Even the smallest overflow threshold found (~53K × 53K for EntropyCoding) is far beyond any real VideoToolbox session
 
-**Conclusion**: The 26.7.2 CVEs are NOT simple allocation arithmetic overflows. They must be one of:
-1. A parameter (not width/height) that's not validated before use in a size multiplication
-2. A write-site OOB: buffer allocated correctly, but write loop uses wrong bounds
-3. An off-by-one or index miscalculation in the CPU-side encode loop
+**Updated conclusion (2026-11-04)**: CVE-2026-112689 IS a frame dimension validation bypass. The fix in 26.7.2 added a new function that checks frame dimensions against codec-level macroblock limits BEFORE allocation. In 26.6.1 these dimensions flow unchecked into CalcBufSizeOf, potentially causing undersized allocations.
 
 ---
 
 ## CVE Pattern Analysis
 
-### CVE-2026-112689 — Blackwing — "improved input validation"
-- Fix: add a bounds check on a parameter BEFORE it reaches the allocation
-- The unvalidated parameter is likely NOT width/height (those have smull guards)
-- Candidates: number of reference frames, temporal layer count, tile count, slice count
-- In 26.6.1: some parameter P flows into a multiplier without `cmp P, MAX_P`
-- In 26.7.2: `cmp P, MAX_P; b.hi error` added before the multiplier
+### CVE-2026-112689 — Blackwing — "improved input validation" ✅ CONFIRMED (2026-11-04)
+- **Exact fix located**: New function `sub_fffffff00853aa34` added in 26.7.2
+- Called from `AVE_AVC_CheckInfo` (26.7.2 at 0x5244f4) after iNumViews/iLayerNum checks
+- Validates frame dimensions at struct offsets `[x21, #0xa58]` / `[x21, #0xa5c]` against codec-level macroblock table in `__DATA_CONST.__const` (0xfffffff007dbfd88)
+- In 26.6.1 (0x851c454): this call does NOT exist → dimensions flow directly to CalcBufSizeOf
+- Error string added: `"frame dimension is out of range %d %d %d\n"` (3 dims = width, height, total_mbs?)
+- Also added for HEVC (4 dims), plus "frame dimension doesn't match prepare/start" check
 
 ### CVE-2026-112468/469/470 — Hcamael + 章鱼哥 — "improved bounds checking" (3 CVEs, OOB write)
 - Impact: "corrupt kernel memory" — these hit kernel heap buffers
