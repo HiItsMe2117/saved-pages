@@ -241,7 +241,7 @@ Two independent, enforced controls block every known path on iOS 26.6.1:
 
 The server IS unpatched (no overflow check in `IPCAUSharedMemoryBase::InitPhase1`), but it is architecturally unreachable. A potential numFrames-based bypass (mBytesPerFrame=999,999 + numFrames≥4,296 → product overflows 32-bit) exists but also requires a reply port (EXC_GUARD).
 
-**PIVOT to AVE2 DPB overflow (Surface AVE2).**
+**PIVOT to CPU-side kernel overflow surfaces (AVE2 also CLOSED — DART blocks DPB OOB write, confirmed empirically 2026-11-04).**
 
 **CRITICAL CORRECTION (2026-11-01):** `com.apple.audio.AURemoteIOServer` uses **raw Mach messages via MIG** — not XPC, not NSXPCConnection. Our previous probe script (`xpc_connection_create_mach_service` + `xpc_dictionary`) was aimed at the wrong protocol and cannot work.
 
@@ -555,7 +555,7 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE → Surface E (AVE2 DPB overflow) CLOSED 2026-11-04. DART blocks write; IPC path confirmed clean. Focus shifts to Surface C.**
+**← RESUME HERE 2026-11-04 → Both Surface C and Surface AVE2 (E) CLOSED. Common blocker: DART IOMMU for coprocessor-DMA surfaces, EXC_GUARD for audiomxd MIG. All firmware-DMA OOB paths are architecturally blocked. Pivoting to CPU-side kernel overflows (host CPU in kernel VAS, no DMA). Diff-mining 27.0.1 for CPU-side candidates.**
 
 0. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 

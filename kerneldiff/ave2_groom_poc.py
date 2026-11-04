@@ -213,8 +213,9 @@ log(f"SPRAY={SPRAY_COUNT}  VICTIMS={VICTIM_COUNT}  DPB_WAIT={DPB_WAIT_S*1000:.0f
 rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 rss_mb = rss / (1024 * 1024)
 log(f"Process RSS: {rss_mb:.0f} MB")
-if rss_mb > 1300:
-    log("WARNING: RSS > 1300 MB — high risk of jetsam during spray")
+if rss_mb > 1250:
+    log("BAIL: RSS > 1250 MB — jetsam wall at ~1319 MB; close PocketCode entirely and retry")
+    sys.exit(1)
 
 # ----------------------------------------------------------------- Phase 1: sanity
 log("--- Phase 1: sanity check ---")
