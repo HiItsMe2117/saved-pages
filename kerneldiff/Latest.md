@@ -555,7 +555,20 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE 2026-11-04 → Pivoting to CPU-side kernel overflows. Full AVE2 kext architecture mapped and committed to `AVE2_ARCH.md`. All 17 CalcBufSizeOf function string VAs mapped; all 93 xrefs located in 16 KB window 0xfffffff0084ec894–0x84f0de8. CalcBufSizeOfMBInputCtrl partially reversed (AVC + HEVC paths). MBInputCtrl has NO NTL multiplier (per-frame buffer). NEXT: disassemble Colocated + LFSRef (reference-frame buffers = NTL multiplier expected) to find CPU-side 32-bit overflow. ios 26.7.2 CVE-2026-112689 (Blackwing) = "improved input validation" = size overflow path; CVEs 112468/469/470 (Hcamael) = "improved bounds checking" = OOB write even with correct size.**
+**← RESUME HERE 2026-11-04 (session 2) → Deep analysis of all 17 CalcBufSizeOf functions in 26.6.1 kext COMPLETE. Key finding: ALL arithmetic paths require unreachable resolutions (>50K px per side) to overflow. The CVE pattern is NOT simple CalcBufSizeOf arithmetic overflow. See AVE2_ANALYSIS.md for full analysis.
+
+IMMEDIATE NEXT STEP: Binary diff of 26.6.1 vs 26.7.2 kexts. Both kexts available on Mac:**
+- **26.6.1**: `~/kerneldiff_ave2/23G83__iPhone17,4/kexts/com.apple.driver.AppleAVE2`
+- **26.7.2**: kernelcache at `~/kerneldiff_ave2/26_7_2/` — run `ipsw kernel extract <kc> "com.apple.driver.AppleAVE2" --output ~/kerneldiff_ave2/26_7_2/kexts` to extract the kext
+- **27.0.1**: `~/kerneldiff_ave2/27_0_1/kexts/com.apple.driver.AppleAVE2` (extracted, major rewrite)
+
+**Diff methodology**: Find changed functions by comparing __TEXT_EXEC sections byte-by-byte. Any function that changed in 26.7.2 but not in an architecturally-unrelated way = patched CVE. Look for: `mul` → `smull`, new `cmp wX, #N; b.gt error` before multiplies, changed loop bounds.
+
+**26.7.2 CalcBufSizeOf should have SAME 17 names as 26.6.1 (same codebase, just patched).**
+
+**27.0.1 comparison notes**: LFSRef renamed to LFSOutput, DPB extracted from Recon, 5 new SrcNeighbor types. 27.0.1 is a major rewrite — only use to confirm same functions changed in both patches.
+
+**Reference files**: KEXT_26.6.1.md, KEXT_26.7.2.md, KEXT_27.0.1.md, AVE2_ANALYSIS.md**
 
 **AVE2 final closure report: `REPORT_surface_ave2_final.md` (2026-11-04)**
 
@@ -655,7 +668,14 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 | `REPORT_27.md` | 26.6.1 → 27.0.1 full kernel diff |
 | `ave2_overflow_poc.py` | Surface E dynamic probe — NTL ladder, AppGroup file logging |
 | `AVE2_ARCH.md` | **AppleAVE2 kext architecture notes** — segment map, pointer encoding, all 17 CalcBufSizeOf VAs, MBInputCtrl partial reversal, CVE mapping |
+| `KEXT_26.6.1.md` | **26.6.1 kext deep analysis** — all 17 CalcBufSizeOf analyzed, arithmetic summary, LFSRef caller table |
+| `KEXT_26.7.2.md` | **26.7.2 kext notes** — CVE table, diff methodology, pending extraction |
+| `KEXT_27.0.1.md` | **27.0.1 kext notes** — function rename table (LFSRef→LFSOutput, DPB extracted, 5 new types) |
+| `AVE2_ANALYSIS.md` | **Connecting analysis** — CVE patterns, why CalcBufSizeOf arithmetic is NOT the bug, diff strategy |
 | `Latest.md` | **This file** — single source of truth for current state |
 
-*Kernelcaches on disk (NOT in git — regenerate if missing):*
-`kc_26.6.1.macho`, `kc_27.0.1.macho`, `sptm_26.6.1.bin`, `sptm_27.0.1.bin`
+*Kernelcaches and kexts on disk at `~/kerneldiff_ave2/` (NOT in git):*
+- `23G83__iPhone17,4/kexts/com.apple.driver.AppleAVE2` — 26.6.1 kext + .a2s cache
+- `26_7_2/` — 26.7.2 kernelcache (extract kext: `ipsw kernel extract <kc> "com.apple.driver.AppleAVE2" --output 26_7_2/kexts`)
+- `27_0_1/kexts/com.apple.driver.AppleAVE2` — 27.0.1 kext (extracted, major rewrite)
+- OTA files: `iOS26.7.2_OTAs/*.aea` (8.7 GB), `iOS27.0.1_OTAs/*.aea` (9.1 GB)
