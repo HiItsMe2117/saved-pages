@@ -25,6 +25,42 @@
 
 ---
 
+## IOKit User Client Dispatch Table (2026-11-04)
+
+**Service**: `AppleAVE2UserClient`  
+**Dispatch table VA**: `0xfffffff007dc1840` (in `__DATA_CONST.__const`)  
+**Table format**: `IOExternalMethodDispatch` — 24 bytes/entry: `[action:8][scalar_in:4][struct_in:4][scalar_out:4][struct_out:4]`
+
+| Sel | Action VA              | struct_in   | struct_out  | Notes                        |
+|-----|------------------------|-------------|-------------|------------------------------|
+|  0  | 0xfffffff0086401ec     | 0x38        | 0x20        |                              |
+|  1  | 0xfffffff008640aa8     | 0x1a0a0     | 0x20        | Large config struct (Configure?) |
+|  2  | 0xfffffff00864157c     | 0x1a0b0     | 0x150       | "pIn->iUCInfoIdx >= 0" assertion |
+|  3  | 0xfffffff008642094     | 0x30        | 0x20        |                              |
+|  4  | 0xfffffff0086428ac     | 0x30        | 0x20        |                              |
+|  5  | 0xfffffff0086430c4     | 0x30        | 0x20        |                              |
+|  6  | 0xfffffff0086438dc     | 0x30        | 0x20        |                              |
+|  7  | 0xfffffff0086440f4     | 0x30        | 0x20        |                              |
+|  8  | 0xfffffff00864490c     | 0           | 0           | "Config" / "AppleAVE2UserClient" |
+|  9  | 0xfffffff008644dd4     | 0           | 0           | **Prepare** — `S_AVE_UCInParam_Prepare` assertion |
+| 10  | 0xfffffff00864526c     | 0           | 0           |                              |
+| 11  | 0xfffffff008645708     | 0           | 0           |                              |
+| 12  | 0xfffffff008645ba4     | 0           | 0           |                              |
+
+### Key notes
+
+- **Selectors 8–12** have `si=ss=so=sso=0` — the IoKit framework does NOT validate struct sizes for these. The handlers validate internally.
+- **Selector 9 = Prepare**: Trampoline at 0x8644dd4 uses `autda x16, #0xcda1; ldr x8, [x16, #0x88]; blraa x8, x16` — authenticated vtable dispatch at offset 0x88. That vtable slot is `0x8644aa8` (the Prepare outer handler).
+- **Call chain (Prepare)**: sel-9 trampoline → vtable[0x88] = 0x8644aa8 → 0x86450b4 → 0x86454fc → `AVE_Client_Prepare` (0x8523fb0) → `AVE_AVC_CheckInfo` (0x851c454, via fptr) + allocation
+- **ARM64e vtable dispatch**: The function 0x8644aa8 appears to have "zero direct BL callers" because it's dispatched exclusively via `blraa` (authenticated indirect call) — the signed vtable pointer is NOT searchable in DATA_CONST without the signing key.
+- **Input struct for Prepare**: `S_AVE_UCInParam_Prepare`. From the code at 0x86454ec–0x86454fc:
+  - `x20+0x18` → arg1 to AVE_Client_Prepare
+  - `x20+0x228` → arg2
+  - `x20+0x338` → arg3
+  - `x20+0x28` → arg4
+
+---
+
 ## CalcBufSizeOf Functions — All 17
 
 **Window**: `0xfffffff0084ec894` to `0xfffffff0084f0de8` (16 KB)
