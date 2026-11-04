@@ -576,25 +576,40 @@ IMMEDIATE NEXT STEP: Binary diff of 26.6.1 vs 26.7.2 kexts. Both kexts available
 
 | Rank | Surface | Path | Why CPU-side | Status |
 |------|---------|------|-------------|--------|
-| 1 | **FigXPC / CVE-2026-112706** | XPC → mediaplaybackd | Runs in daemon on host CPU; no DMA | **UNEXPLORED — start here** |
-| 2 | **AVE2 IOKit SetSessionSettings (MIG method 7)** | IOKit user client → kext handler on host CPU | Completely separate from DPB/DART path; ziVA lineage | **UNEXPLORED — IOServiceOpen blocked from sandbox** |
-| 3 | **Surface C numFrames bypass** | Raw MIG → audiomxd | Server overflow confirmed in disasm; EXC_GUARD blocker | **Needs EXC_GUARD bypass first** |
-| 4 | **Surface 5 / vm_sanitize wrap** | Kernel trap | 4 explicit ADDS+B.CS guards found in MMME64 | Likely CLOSED per static analysis |
+| 1 | **AVE2 CalcBufSizeOf OOB — CVE-2026-112466/468/469/470/689** | VideoToolbox → AVE2 kext | CPU-side kalloc buffers, no DART | **Active — pending 26.7.2 kext diff** |
+| 2 | **CoreAudio OOB write — CVE-2026-86969** | App → CoreAudio kext/daemon | App-triggered, kernel corruption | **UNEXPLORED — alternative if AVE2 stalls** |
+| 3 | **FigXPC / CVE-2026-112706** | XPC → mediaplaybackd | Runs in daemon on host CPU; no DMA | **UNEXPLORED** |
+| 4 | **AVE2 IOKit SetSessionSettings (MIG method 7)** | IOKit user client → kext handler | CPU-side, no DART; ziVA lineage | **UNEXPLORED — IOServiceOpen blocked from sandbox** |
+| 5 | **Surface C numFrames bypass** | Raw MIG → audiomxd | Server overflow confirmed in disasm; EXC_GUARD blocker | **Needs EXC_GUARD bypass first** |
 
-**Rank 1 — FigXPC (CVE-2026-112706):**  
+**Rank 1 — AVE2 CalcBufSizeOf (5 CVEs, all open on 26.6.1):**
+- Full CVE list from 26.7.2 Apple security notes (confirmed):
+  - CVE-2026-112466 (Hcamael): **OOB read → read kernel memory** = KASLR bypass
+  - CVE-2026-112468/469/470 (Hcamael): **OOB write → corrupt kernel memory**
+  - CVE-2026-112689 (Blackwing): **OOB write → corrupt kernel memory** (input validation)
+  - CVE-2026-112705 (Calif.io): OOB write, termination only (lower priority)
+- Hcamael chain: 112466 (read = KASLR bypass) + 112468/469/470 (write = corruption)
+- **Next step:** 26.7.2 kext binary diff to find which functions changed
+
+**Rank 2 — CoreAudio OOB write (CVE-2026-86969, Nik Tsytsarkin / Meta Red Team X):**
+- App-triggered OOB write → corrupt **kernel memory**
+- CoreAudio reachable from sandbox (AURemoteIOServer + SystemSoundServer-iOS both kr=0)
+- Subsystem unknown — could be in kext (`AppleHDA`/audio kext) or in kernel path via audiomxd
+- Also in 26.7.2: CVE-2026-113907 (process memory, lower value), CVE-2026-112638 (radio range)
+- **Explore if AVE2 diff stalls** — may be simpler (no DART, no IOMMU consideration)
+
+**Rank 3 — FigXPC (CVE-2026-112706):**  
 - `mediaplaybackd` XPC, host CPU, no DART  
 - GAP_ANALYSIS: "Fix was incomplete in iOS 27.0 — auxiliary opcodes still affected on iOS 26.5" → likely 26.6.1 too  
 - Public PoC: MchinaMd57764/CVE-2026-112706-CoreMedia-fd-leak  
 - Low memory footprint: just an XPC call, no AV hardware warmup  
-- XPC service names confirmed in kernelcache strings: `com.apple.coremedia.mediaplaybackd.*`  
-- **Next action:** Read PoC, adapt to run via ResearchHost, probe on-device  
+- XPC service names confirmed in kernelcache strings: `com.apple.coremedia.mediaplaybackd.*`
 
-**Rank 2 — AVE2 IOKit SetSessionSettings:**  
+**Rank 4 — AVE2 IOKit SetSessionSettings:**  
 - `AppleAVE2UserClient` confirmed in kernelcache strings  
 - IOKit MIG dispatch runs on host CPU in kernel — no DART involved  
 - `IOServiceOpen` blocked from sandbox, BUT: could be reachable via VideoToolbox → VTD XPC proxy  
 - ziVA (2017) + CVE-2019-8795 both exploited method 7 on older iOS  
-- **Next action:** Disassemble AppleAVE2 kext in kernelcache, find method 7 handler, check if reachable via VT API layer  
 
 0. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
