@@ -233,7 +233,15 @@ The IOKit binary from device symbols (`iPhone17,4 26.6.1 (23G83)/Symbols/.../IOK
 
 ### Surface C — AURemoteIOServer MIG shmem substitution (HIGH)
 
-**Status:** MIG message IDs confirmed, request/reply layouts fully decoded 2026-11-01. Probe script `surface_c_probe.py` rewritten with raw `mach_msg` (no XPC). Ready to run.
+**Status: CLOSED — 2026-11-04. See `REPORT_surface_c_final.md` for full details.**
+
+Two independent, enforced controls block every known path on iOS 26.6.1:
+1. **EXC_GUARD (kernel-level)**: Strict-reply port guards on audiomxd. ANY reply port in a raw MIG message → `EXC_GUARD` on port 0x2507. Exhaustively tested across all T-variants (T0–T6a, T0×20). T0 (no reply) passes but delivers no nc_hndl.
+2. **MinimalSafetyCheck (client-side, `ausdk::ASBD::MinimalSafetyCheck` at libEmbeddedSystemAUs.dylib:0x23d508a2c)**: Caps `mBytesPerFrame` at 999,999. Minimum overflow value is 1,048,576 (for the `mBytesPerFrame × 0x1000 + 15` server-side MADD). Gap: 1,048,576 > 999,999 → all overflow ASBDs rejected before reaching audiomxd.
+
+The server IS unpatched (no overflow check in `IPCAUSharedMemoryBase::InitPhase1`), but it is architecturally unreachable. A potential numFrames-based bypass (mBytesPerFrame=999,999 + numFrames≥4,296 → product overflows 32-bit) exists but also requires a reply port (EXC_GUARD).
+
+**PIVOT to AVE2 DPB overflow (Surface AVE2).**
 
 **CRITICAL CORRECTION (2026-11-01):** `com.apple.audio.AURemoteIOServer` uses **raw Mach messages via MIG** — not XPC, not NSXPCConnection. Our previous probe script (`xpc_connection_create_mach_service` + `xpc_dictionary`) was aimed at the wrong protocol and cannot work.
 
