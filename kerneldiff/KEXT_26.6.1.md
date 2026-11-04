@@ -180,37 +180,92 @@ Download iOS 26.5 OTA to see the pre-64747 kext: confirms the pattern and helps 
 
 ---
 
-## CVE-2026-112689 — Open Surface Confirmed (2026-11-04)
+## CVE-2026-112689 — Root Cause CONFIRMED (2026-11-04, Mac+Phone joint analysis)
 
-### What 26.6.1 is MISSING (added in 26.7.2):
+### Corrected understanding: fix is in `AVE_Client_CheckGGMInfo`, NOT in dimension tables
 
-`AVE_AVC_CheckInfo` in 26.6.1 is at **0xfffffff00851c454** (1100 bytes).  
-In 26.7.2 it's at 0xfffffff0085244f4 (larger, with new frame dimension check).
+**Earlier hypothesis (wrong)**: fix = new dimension validator `sub_fffffff00853aa34` added to `AVE_AVC_CheckInfo`.  
+**Confirmed root cause**: fix = two new out-of-range guards added to `AVE_Client_CheckGGMInfo` before the TOCTOU bypass.
 
-The 26.6.1 version validates:
-- `[x1, #0x2df8]` — sub 1, compare ≤ 2 → iNumViews bound  
-- `[x21, #0x2df4]` — sub 1, compare ≤ 2 → iLayerNum bound  
-- Then proceeds directly to CalcBufSizeOf allocation with frame fields [x21, #0xa58] / [x21, #0xa5c]
+The dimension table data at `__DATA_CONST.__const` is **IDENTICAL** between 26.6.1 and 26.7.2 — all 110 non-null TableHeader pointers resolve to the same values in both versions. The validator function `sub_fffffff00852f9d4` itself is also unchanged.
 
-**MISSING**: After passing iNumViews/iLayerNum bounds, 26.6.1 does NOT call `sub_fffffff00853aa34` (which validates frame dimensions against codec-level macroblock table).
+---
 
-### Exploit path (CVE-2026-112689):
+### The Bypass: `AVE_Client_CheckGGMInfo` at 0xfffffff00851dd2c (HEVC path)
 
-1. Create VideoToolbox session with valid iNumViews=1, iLayerNum=1
-2. Set frame dimensions (struct offsets 0xa58/0xa5c) to values that cause CalcBufSizeOf to overflow/undercompute
-3. AVE_AVC_CheckInfo passes → kernext proceeds to allocate undersized buffer  
-4. Write loop uses actual dimensions → OOB kernel heap write
+This function validates an HEVC encode session's GGM (Global Generic Model) parameters. It is called during the START encode path (after PREPARE allocates buffers).
 
-**Key frame dimension fields**:
-- `[x21, #0xa58]` → passed as arg3 to dimension checker (width-related)
-- `[x21, #0xa5c]` → passed as arg4 to dimension checker (height-related)
+**Function args:**
+- x0 = arg0 (encoder_state, x21 in body)
+- x1 = arg1 (some obj, x20 in body)
+- x2 = arg2 (codec control flag, x23 in body) — **bit0 = bypass trigger**
+- x3 = arg3 (Config struct pointer, x22 in body) — same 0x1a0a0 struct as Sel 1
+
+**Bypass mechanism at VA 0xfffffff00851df84:**
+
+```asm
+tbnz  w23, #0, loc_dfb4         ; ← BYPASS: if bit0(arg2) set → skip mismatch check entirely
+ldr   w8, [x22, #0x2ec0]        ; read Config[0x2ec0] = mode_flag
+cmp   w8, #0x1
+b.ne  loc_dfb4                  ; ← BYPASS: if mode_flag ≠ 1 → skip mismatch check entirely
+; --- actual PREPARE/START mismatch check (only reached if both bypasses inactive) ---
+ldr   w8, [x21, #0x1838]        ; encoder_state[0x1838] = prepared width (set during Sel 9)
+ldr   w9, [x22, #0xa58]         ; Config[0xa58] = start width (from new Config struct)
+cmp   w8, w9
+b.ne  → error                   ; mismatch → error
+ldr   w8, [x21, #0x183c]        ; encoder_state[0x183c] = prepared height
+ldr   w9, [x22, #0xa5c]         ; Config[0xa5c] = start height
+cmp   w8, w9
+b.ne  → error
+```
+
+**Bypass trigger**: set `Config[0x2ec0]` to any value ≠ 1 (user-controllable via Sel 1 input struct).
+
+---
+
+### The Fix (26.7.2): two new guards at VA 0xfffffff008527b18
+
+```asm
+ldr  w8, [x21, #0x1c8]          ; ← NEW: Config[0x1c8] = iLAFrameCnt (LookAhead frame count)
+cmp  w8, #0x15                   ;        compare with 21
+b.hs → "LookAhead frame count is out of range"  ; always fail before reaching bypass
+ldr  w8, [x21, #0x248]          ; ← NEW: Config[0x248] = iNumOfFrame_B (B-frame count)
+cmp  w8, #0x4                    ;        compare with 4
+b.hs → "B Frame number is out of range"         ; always fail before reaching bypass
+; ---- then existing tbnz/mode bypass (still present in 26.7.2) ----
+```
+
+Note: in 26.7.2, x21 = arg3 = Config struct (arg assignments changed between versions).
+
+**26.6.1 missing**: NO iLAFrameCnt check before the bypass in `AVE_Client_CheckGGMInfo`. An earlier check at 0xfffffff00851d614 (`ldr w8, [x21, #0x1c8]; cmp w8, #0x15`) is on the PREPARE path, NOT on the START path that calls `AVE_Client_CheckGGMInfo`.
+
+---
+
+### Exploit chain (CVE-2026-112689):
+
+```
+1. Sel 0 (init): HEVC codec (eEncType=4)
+2. Sel 1 (config): width=64, height=64, iLAFrameCnt=21, mode_flag=0 (at Config[0x2ec0])
+3. Sel 9 (prepare): allocates small buffer; sets encoder_state[0x1838/0x183c] = 64/64
+4. Sel 1 (reconfig): width=4096, height=4096, same iLAFrameCnt=21, mode_flag=0
+5. START selector (10 or 11): calls AVE_Client_CheckGGMInfo via PATH B
+   → HEVC dimension validator passes (4096×4096 is valid HEVC)
+   → cbz w0 → reaches bypass site
+   → mode_flag=0 ≠ 1 → BYPASS ACTIVATED → mismatch check SKIPPED
+   → Codec processes 4096×4096 frame into 64×64 buffer → OOB write
+```
+
+**Key input struct fields for the bypass:**
+- `Config[0xa58]` = ui32Width (start dimensions)
+- `Config[0xa5c]` = ui32Height
+- `Config[0x2ec0]` = mode_flag — set to 0 to activate bypass
+- `Config[0x1c8]`  = iLAFrameCnt — set to 21 to reach bypass via secondary PATH B
 
 ---
 
 ## Notes / Open Questions
 
-- Do any CalcBufSizeOf functions have an **NTL multiplier** in the caller (not in the CalcBufSizeOf itself)?
-- Are there CPU-side WRITE functions that use a different bounds formula than the allocation?
-- Three unanalyzed LFSRef callers — could pass larger shift values
-- The 26.5→26.6.1 diff will show what CVE-2026-64747's "size validation" fix added (reference template)
-- Next: identify which specific CalcBufSizeOf function uses [x21, #0xa58] / [x21, #0xa5c] directly
+- Which exact selector (10, 11, or 12) calls `AVE_Client_CheckGGMInfo` via PATH B?
+- What is PATH B exactly? (the code path that bypasses the 0x851d614 iLAFrameCnt check on the PREPARE path)
+- Does calling Sel 1 twice (after Prepare) trigger PATH B?
+- Confirm the PoC selector sequence before running on device

@@ -109,14 +109,11 @@
 
 **This call does NOT exist in 26.6.1.** The function at 0x851c454 jumps directly to allocation after the iNumViews/iLayerNum checks.
 
-### New checker function logic (sub_fffffff00853aa34):
+### REVISED ANALYSIS (2026-11-04): fix is NOT in sub_0x853aa34
 
-1. Calls `sub_fffffff0085428ac` (table lookup) → pointer to codec-level dimension table
-2. Table is in `__DATA_CONST.__const` at VA `0xfffffff007dbfd88`
-3. Table indexed by: codec level (arg w0, max 34 entries × 72 bytes) + codec type (AVC/HEVC/etc.)
-4. Iterates through table entries: `(min_a, max_b, flags)` per entry
-5. If frame params don't satisfy ANY entry → returns `0xfffffc16` (error)
-6. If match found → returns 0 (success)
+`sub_fffffff00853aa34` is called from `AVE_AVC_CheckInfo` (26.7.2 at 0x5244f4) BUT the dimension table data it accesses is **IDENTICAL** to 26.6.1. All 110 TableHeader entries resolve to the same VAs in both versions.
+
+**Actual fix**: Two new guards in `AVE_Client_CheckGGMInfo` (HEVC path) — see below.
 
 ### Dimension fields (struct offsets in VideoParams):
 - Offset `0xa58` → width-related value (macroblock width? frame width?)
@@ -141,12 +138,33 @@
 
 ---
 
-## CVE-2026-112689 Exploit Path (open on 26.6.1)
+## CVE-2026-112689 Root Cause (confirmed 2026-11-04)
 
-The check at struct offsets `[x21, #0xa58]` / `[x21, #0xa5c]` does NOT exist in 26.6.1.  
-Any frame dimensions passing the iNumViews/iLayerNum bounds flow unchecked into CalcBufSizeOf.
+### Fix location: `AVE_Client_CheckGGMInfo` — two new guards at 0xfffffff008527b18
 
-**Attack**: Provide frame dimensions outside the codec level's supported range → CalcBufSizeOf computes wrong buffer size → allocation too small → OOB write on kernel heap.
+```asm
+; 26.7.2 — NEW guards before the tbnz bypass:
+0xfffffff008527b18:  ldr  w8, [x21, #0x1c8]   ; Config[0x1c8] = iLAFrameCnt
+0xfffffff008527b1c:  cmp  w8, #0x15            ; compare with 21
+0xfffffff008527b20:  b.hs → "LookAhead frame count is out of range"
+0xfffffff008527b24:  ldr  w8, [x21, #0x248]   ; Config[0x248] = iNumOfFrame_B
+0xfffffff008527b28:  cmp  w8, #0x4             ; compare with 4
+0xfffffff008527b2c:  b.hs → "B Frame number is out of range"
+; ---- existing tbnz bypass still present ----
+0xfffffff008527b30:  tbnz w23, #0, skip        ; bit0(arg2) → bypass
+0xfffffff008527b34:  ldr  w8, [x21, #0x2ec0]  ; Config[0x2ec0] = mode_flag
+0xfffffff008527b38:  cmp  w8, #0x1
+0xfffffff008527b3c:  b.ne skip                 ; mode ≠ 1 → bypass
+; (then mismatch check: compare prepared dims vs start dims)
+```
+
+Note: in 26.7.2, x21 = arg3 = Config struct.  
+In 26.6.1, x22 = arg3 = Config struct (arg register assignment changed).
+
+**26.6.1 is missing BOTH new guards** — iLAFrameCnt and iNumOfFrame_B not checked before bypass.
+
+### Exploit path open on 26.6.1
+See KEXT_26.6.1.md § "CVE-2026-112689 Root Cause" for full chain.
 
 ---
 
