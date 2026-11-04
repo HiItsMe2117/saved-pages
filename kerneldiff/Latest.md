@@ -423,9 +423,9 @@ There is NO CFPreferences key for this. The `UIStatusBarShowingClockSeconds` key
 
 ---
 
-### Surface E — AVE2 32-bit DPB buffer-size overflow (LIVE — heap groom in progress)
+### Surface E — AVE2 32-bit DPB buffer-size overflow (CLOSED — DART blocks write)
 
-**Status:** NTL=2057 confirmed fast (0.05s), groom PoC written and partially validated 2026-11-03. Multi-frame OOB trigger needed — fixing now.
+**Status:** Definitively closed 2026-11-04. DART IOMMU blocks the OOB write. IPC path RE confirms no kernel VA misuse path. Full kext analysis complete.
 
 **Root cause (26.6.1, `AppleAVE2` kext, offset ~0x28a000–0x28d000 in kernelcache):**
 
@@ -494,6 +494,44 @@ NTL 1500–2056 produce legitimate allocations of ~3–4.3 GB without overflowin
 
 ---
 
+**DEFINITIVE CLOSURE (2026-11-04 — kext RE + PoC empirical):**
+
+**Layer 1 — DART IOMMU blocks the write (empirical, v6/v7 PoC):**
+- 0xAA pre-fill detection: 16 victim surfaces filled with 0xAA, NTL=2057 encode fired (st=0, 2 frames)
+- All 16 victims polled for 16 seconds: 0xAA unchanged throughout
+- Classic alternating groom + victims-first + IOSurfaceLookup: same result
+- Root cause: DPB is mapped in DART at [DART_base, DART_base+2,023,424). The firmware DPB[1] write targets DART_base+2,088,960 — 65,536 bytes past the DART mapping end. DART IOMMU hardware raises `DARTHwException` and blocks the access.
+
+**Layer 2 — DART exception is non-fatal (kext RE):**
+- `DARTHwException` handler at kext VA `0x8530800` logs the fault (IsWrite, Addr, AXI ID, L0-L3 page table indices) and returns 0 (success).
+- Firmware continues executing after the fault.
+
+**Layer 3 — IPC completion path does NOT use firmware-supplied kernel VAs (kext RE):**
+
+Key function at kext VA `0x84fcbb8` (`AVE_CHM_[recon buffer fill]`):
+```
+args: x19=IPC_cmd_struct  x20=DPB_surface  x21=buf_offsets  x22=output_descriptor
+calls 0x85fbd44(x0=DPB_surface, w1=[x19,#0x28])  ; w1 = firmware-supplied buffer INDEX
+```
+
+Function at `0x85fbd44`:
+```
+0x85fbd6c: cmp w1, #0x4        ; BOUNDS CHECK: index >= 4?
+0x85fbd70: b.hs error_path     ; YES → return NULL, never use index
+0x85fbd74: ldr x8, [x20, #0xf0] ; load surface bitmask from kext's OWN object
+0x85fbd80: ...
+0x85fbda0: ldr x8, [x10]       ; dereference kext's OWN buffer_entry pointer
+0x85fbda8: ldr x8, [x8, #0x20] ; kernel VA from kext's OWN buffer table (NOT firmware IPC)
+```
+
+The kernel VA stored in `x22` (Phy/Kernel/DART addresses logged in `FwLog`) all come from the kext's own buffer management tables, populated during `AVE_Client_DARTMapDataSurfaces`. The firmware IPC message provides only a bounds-checked index (0–3).
+
+**CONCLUSION: Surface E is closed. DART is the definitive defense. No IPC kernel VA misuse path exists in the kext.**
+
+Requires: (a) DART bypass/manipulation vulnerability, OR (b) an entirely different AVE2 attack surface that does not involve the DPB overflow path.
+
+---
+
 ## NVMe GL2 DMA Chain (post kernel-exec only)
 
 ```
@@ -509,30 +547,9 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
 
 ## Next Steps (priority order)
 
-**← RESUME HERE → Device was rebooted at end of 2026-11-03 session to clear stuck AVE2 firmware.**
+**← RESUME HERE → Surface E (AVE2 DPB overflow) CLOSED 2026-11-04. DART blocks write; IPC path confirmed clean. Focus shifts to Surface C.**
 
-**CRITICAL WARNING:** 27.0.1 added `AVE_Entitlement_Check`. If Apple backports this gate to a 26.6.x point release, the NTL path becomes sandbox-inaccessible. Run the groom PoC before any iOS update.
-
-0. **Surface E — AVE2 heap groom PoC (WRITTEN, READY TO RUN)**
-
-   **Status:** `ave2_groom_poc.py` v4 written with all corrections (feeder pattern, multi-frame, CFRelease, no Invalidate). Blocked on memory pressure — need background apps closed before submitting.
-
-   **To run:** close all background apps → reopen ResearchHost → submit via offload_python with `wait=60`.
-
-   **Key parameters:** `SPRAY_COUNT=16, VICTIM_COUNT=16, NUM_FRAMES=5, DPB_WAIT_S=0.020, OOB_WAIT_S=12.0`
-
-   **Success signal:** `KERNEL WRITE CONFIRMED` in `AppGroup/Library/ave2_groom_v4.txt`
-   **Failure modes:** groom miss (try more spray), gap too large (try GROOM_SIZE=2_031_616 to match actual alloc), timing (increase DPB_WAIT_S)
-
-   **Escalation path after confirmation:** replace victim IOSurface with pipe buffer → corrupt `buf_size` → kernel R/W primitive via Siguza pipe technique
-
-   **PoC files:**
-   - `kerneldiff/ave2_groom_poc.py` (v4 — feeder+multiframe groom, writes `ave2_groom_v4.txt`)
-   - `kerneldiff/ave2_overflow_poc.py` (v4 — NTL ladder [1, 100, 500, 2057, 2100, 2200, 2500])
-
-   **Run conditions:** fresh reboot, all background apps closed, memory < 1400 MB baseline
-
-1. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
+0. **Surface C MIG probe (AURemoteIOServer)** — attack model corrected 2026-11-01:
 
    **Attack model revision (2026-11-01 — disassembly of full call chain):**
    - Our ne at `IONodeClient+0xc` is a **notification port**, not mapped as ring buffer
@@ -573,9 +590,9 @@ Full analysis in STATE.md. Requires kernel exec as precondition.
    **To unblock:** need system baseline ≤ ~1100 MB. Close all apps + restart PocketCode cold.
    Or use `SystemSoundServer-iOS` as backup (lighter, also kr=0).
 
-2. **Surface 5 investigation** — offset+size wrap-around call site in TEXT_EXEC at foff=0x3707668. This was the other vm_sanitize gap candidate. Needs fresh disasm + probe.
+1. **Surface 5 investigation** — offset+size wrap-around call site in TEXT_EXEC at foff=0x3707668. This was the other vm_sanitize gap candidate. Needs fresh disasm + probe.
 
-3. **IOSurface test** — check if IOSurface.framework is accessible from sandbox; IOSurface cross-process shared memory has historically had exploitable bugs and doesn't require IOKit service opens.
+2. **IOSurface test** — check if IOSurface.framework is accessible from sandbox; IOSurface cross-process shared memory has historically had exploitable bugs and doesn't require IOKit service opens.
 
 3. **Surface D demo** — once in SpringBoard context: `[UIStatusBarServer postStatusBarOverrideData:]` with seconds in timeString
 
