@@ -34,7 +34,7 @@ Offset   Type   Behavior
 0x004    u32    Type/flags: 0x100 passes; 0x1/0x10/0x1000/0x10000 → BadArgument
 0x008    u64    Unknown (zeroed ok)
 0x010    u64    Unknown (zeroed ok)
-0x014    u32    Bounded: < ~0x40000000 passes; 0x7fffffff/0xffffffff → BadArgument
+0x014    u32    PAGE COUNT (see integer overflow finding below — PRIORITY TARGET)
 0x018    u64    Unknown (zeroed ok)
 ...
 0x040    u64    Unknown (zeroed ok)
@@ -47,6 +47,39 @@ Offset   Type   Behavior
 Struct ends at 0x57 (88 bytes). Fields [0x058–0x05f] are OUTSIDE the minimum struct.
 
 Baseline: zeroed 0x58 bytes → `kIOReturnNoResources (0xe00002be)` — passes all input validation, fails at resource allocation.
+
+---
+
+## INTEGER OVERFLOW FINDING — PRIORITY (session-12)
+
+**[0x014] is a PAGE COUNT field. There is a confirmed integer overflow in the size check.**
+
+The kernel check is:
+```c
+if ((uint32_t)(page_count * 0x1000) >= 0x800000) return kIOReturnBadArgument;
+// proceeds with allocation using the same wrapped value
+```
+
+The multiplication is performed as u32. Values whose product wraps into the range [0, 0x7fffff] bypass the check:
+
+| page_count | (count × 0x1000) & u32 | Result  |
+|------------|------------------------|---------|
+| 0x0007ff   | 0x007ff000             | NoRes   | ← legitimate max
+| 0x000800   | 0x00800000             | BadArg  | ← boundary
+| 0x100000   | 0x00000000             | NoRes   | ← OVERFLOW BYPASS
+| 0x100001   | 0x00001000             | NoRes   | ← looks like 1 page
+| 0x1007ff   | 0x007ff000             | NoRes   | ← looks like 2047 pages
+| 0x100800   | 0x00800000             | BadArg  | ← overflow still caught
+
+**The exploit hypothesis**: if the allocation uses the wrapped size (4KB for page_count=0x100001) but the subsequent "populate pages" loop iterates using the ORIGINAL page_count field (1,048,577 iterations), the write goes 1,048,576 pages past the allocation — massive OOB write.
+
+**Binary task**: In IOGPUFamily, find the `externalMethod` for sel=8. After the size check, look for:
+1. An `ldr w_N, [input, #0x14]` load of the page_count field
+2. A `mul`/`lsl` computing `w_N * 0x1000` (or `w_N << 12`) — if this is a 32-bit op, that's the overflow
+3. Whether the ALLOCATION uses the mul result (wrapped, small)
+4. Whether the PAGE POPULATION LOOP uses the original `w_N` as a loop counter (large)
+
+If (3) uses wrapped and (4) uses original → confirmed controlled OOB write. See `AGX_OVERFLOW.md` for full details.
 
 **Key takeaways**:
 - sel=8 is the ONLY one of 55 selectors that escapes BadArgument with zero-content input
