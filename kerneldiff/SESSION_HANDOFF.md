@@ -102,6 +102,22 @@ SpringBoard injection → Mac battery in status bar
 
 ---
 
+## XPC Surface Map (session-11)
+
+**Method**: `bootstrap_look_up` to test reachability, then `xpc_connection_send_message_with_reply_sync` to send actual messages.
+
+**Result**: 76/627 LaunchDaemon services are bootstrap-reachable (lookup succeeds, Mach port obtained). Zero accept XPC traffic from our sandbox.
+
+Every service returns `XPC_ERROR_CONNECTION_INVALID` immediately — this is `xpc_connection_set_peer_code_signing_requirement` rejecting us at the Mach level before processing any message content.
+
+The "reachable" services include AMFI, securityd, trustd, containermanagerd, installd, coresymbolicationd, logd, analyticsd — all tested, all reject. Even services designed to serve all apps (logd, analyticsd) use code signing gating on iOS 26.
+
+**Conclusion**: XPC attack surface = zero from sandboxed ResearchHost. Circular: need AMFI bypass to talk to AMFI XPC.
+
+**AGX is the only kernel-reachable surface from the sandbox.**
+
+---
+
 ## Files
 
 | File | Contents |
