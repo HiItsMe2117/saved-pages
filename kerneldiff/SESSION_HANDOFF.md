@@ -24,25 +24,34 @@ Reachable from sandboxed ResearchHost (no extra entitlement):
 
 ---
 
-## AGX Partial Struct Map (sel=8, empirical, 0x60 byte input)
+## AGX Partial Struct Map (sel=8, empirical)
+
+**Minimum valid input size: 0x58 bytes** (88 bytes; previously over-estimated as 0x60)
 
 ```
 Offset   Type   Behavior
 0x000    u32    Unknown (zeroed ok)
-0x004    u32    Type/flags: 0x100 passes input validation; 0x1/0x10/0x1000/0x10000 → BadArgument
+0x004    u32    Type/flags: 0x100 passes; 0x1/0x10/0x1000/0x10000 → BadArgument
 0x008    u64    Unknown (zeroed ok)
 0x010    u64    Unknown (zeroed ok)
+0x014    u32    Bounded: < ~0x40000000 passes; 0x7fffffff/0xffffffff → BadArgument
+0x018    u64    Unknown (zeroed ok)
 ...
 0x040    u64    Unknown (zeroed ok)
 0x048    u32    Handle/ID: non-zero → kIOReturnError (object lookup fails; needs valid handle)
 0x04c    u32    Handle type?: 0x1 → Error, >0x1 → BadArgument
-0x050    u64    Unknown (zeroed ok)
-0x058    u64    Unknown (zeroed ok)
+0x050    u32    Unknown (zeroed ok; last field inside min struct)
+0x054    u32    Unknown (zeroed ok; last field inside min struct)
 ```
 
-Baseline: zeroed 0x60 bytes → `kIOReturnNoResources (0xe00002be)` — passes all input validation, fails at resource allocation.
+Struct ends at 0x57 (88 bytes). Fields [0x058–0x05f] are OUTSIDE the minimum struct.
 
-**Key takeaway**: sel=8 is a "do-something-with-existing-object" call. The handle at 0x048 must come from a prior create call. All create selectors (0–14 tested) → BadArgument with zero input, need valid struct format.
+Baseline: zeroed 0x58 bytes → `kIOReturnNoResources (0xe00002be)` — passes all input validation, fails at resource allocation.
+
+**Key takeaways**:
+- sel=8 is the ONLY one of 55 selectors that escapes BadArgument with zero-content input
+- Selectors 0–7, 9–54: BadArgument at ALL input sizes up to 0x4000 bytes — they content-check, not size-check; need specific field values from binary analysis
+- sel=8 is a "do-something-with-existing-object" call; handle at [0x048] needs a valid ID from a create call
 
 ---
 
