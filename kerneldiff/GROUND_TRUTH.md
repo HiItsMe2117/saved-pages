@@ -101,9 +101,15 @@ Extracted from TABLE_A (file offset 0x562d8). Entry format: fn_VA | si_sz | sc_i
 
 **Key sel=6 note:** TABLE_A entry points to `0xfffffff009bf2f2c` which is a BTI entry point inside a larger function (not the prologue). si_sz=unlimited and sc_in=0 means no kernel pre-check — the function performs its own validation. BINARY UNEXPLORED: sel=6 may be the create/resource-allocation selector. Needs disassembly of full containing function.
 
-## IOGPUDeviceUserClient — Binary (session-13)
+## IOGPUDeviceUserClient — Binary (session-13, updated session-14)
 
-Opened via type=**unknown** (NOT type=1). Has 14 selectors (0–13). TABLE_C/D are zero-initialized at kext load time (dynamic init via __mod_init_func). The 14 `s_*` selector functions (from debug strings):
+Opened via type=**1** on service **"IOGPUDevice"** (session-14 binary analysis of `fcn.fffffff009c16634`). Has 14 selectors (0–13). TABLE_C/D are zero-initialized at kext load time (dynamic init via __mod_init_func). The 14 `s_*` selector functions (from debug strings):
+
+> **Session-14 Binary Findings** (IOGPUDevice::newUserClient — `0xfffffff009c16634`):
+> - Function checks `cmp x1, 1; b.ne → kIOReturnNotReady` — ONLY type=1 is accepted
+> - On type=1: calls `fcn.fffffff009c0b00c(service→field[0x48], 1, secID)` to allocate IOGPUDeviceUserClient
+> - **Entitlement gate** at `fcn.fffffff009c133bc`: loads AMFI service via `fcn.fffffff009c13ce4`, checks property `com.apple.private.iogpu.disable_wired_collector`; if NOT found → returns 0 → `newUserClient` returns `0xe00002e2` (kIOReturnNotReady)
+> - Empirical probe needed to verify ResearchHost can pass this gate
 
 | sel | Function | Notes |
 |-----|----------|-------|
@@ -122,7 +128,7 @@ Opened via type=**unknown** (NOT type=1). Has 14 selectors (0–13). TABLE_C/D a
 | 12 | s_destroy_io_command_buffer | |
 | 13 | s_try_cancel_io_command_buffer | |
 
-> **CRITICAL OPEN QUESTION:** What connection type opens IOGPUDeviceUserClient? Type=0? Type=2? Needs empirical probe.
+> **Connection type=1 on service "IOGPUDevice"** (session-14 binary confirmed). Entitlement gate `com.apple.private.iogpu.disable_wired_collector` may block access — empirical probe pending.
 
 ---
 
@@ -161,13 +167,13 @@ Opened via type=**unknown** (NOT type=1). Has 14 selectors (0–13). TABLE_C/D a
 
 ## Open Questions for Mac Binary Analysis
 
-1. Does sel=8's page-population loop use raw `[0x014]` (page_count) or computed `(u32)(page_count * 0x1000)` for iteration? **This determines exploitability.**
-2. What selector creates a resource handle (output struct contains non-zero handle)?
-3. What is the `kalloc_type` tag for the sel=8 allocated object → which zone, what are its neighbors?
-4. What is the entry_size in the page-population loop? (determines OOB write granularity)
-5. Is SPTM at EL2 or EL3? Is PPL merged into SPTM on A18?
-6. Is `hv_vcpu.c` in the kernelcache or a separate firmware blob?
-7. What does `sptm_guest_dispatch` validate — can a forged vcpu survive integrity checks?
+1. ~~What connection type opens IOGPUDeviceUserClient?~~ **ANSWERED (session-14): type=1 on "IOGPUDevice" service.**
+2. Does the entitlement gate `com.apple.private.iogpu.disable_wired_collector` block ResearchHost? Empirical probe needed.
+3. What selector creates a resource handle (output struct contains non-zero handle)?
+4. What is the `kalloc_type` tag for the allocated object in s_new_resource → which zone, what are its neighbors?
+5. What is the entry_size in the page-pool lookup? (determines OOB write granularity — `ubfiz x9,x1,3,0x20` = ×8 confirmed, but each entry's content matters)
+6. Is SPTM at EL2 or EL3? Is PPL merged into SPTM on A18?
+7. Is `hv_vcpu.c` in the kernelcache or a separate firmware blob?
 
 ---
 
@@ -178,3 +184,5 @@ Opened via type=**unknown** (NOT type=1). Has 14 selectors (0–13). TABLE_C/D a
 - [2026-11-05] "sel=8 page_count overflow bypasses size check" | **RETRACTED** | session-13 binary analysis: sel=8 never reads input struct; no `ldr wN,[xM,0x14]` exists in binary; prior "empirical confirmed" was based on a probe result not properly attributed to a specific user client type
 - [2026-11-05] "SPTM hypervisor interface is new attack surface in iOS 26" | UNVERIFIED — plausible | research agent found references but no primary source; needs binary confirmation
 - [2026-11-05] "IOGPUDeviceUserClient s_new_resource reads input[0x50] as page_count" | BINARY CONFIRMED | disassembly of `0xfffffff009bf72bc` shows `ldr w27, [x23, 0x50]` with `tbnz w8, 3, ...` guard
+- [2026-11-06] "IOGPUDeviceUserClient is opened via IOServiceOpen('IOGPUDevice', type=1)" | BINARY CONFIRMED (high confidence) | `fcn.fffffff009c16634` = IOGPUDevice::newUserClient-like; `cmp x1, 1; b.ne fail`; allocates via `fcn.fffffff009c0b00c`; x3 used as output ptr handler; empirical verification still needed
+- [2026-11-06] "Entitlement gate `com.apple.private.iogpu.disable_wired_collector` in IOGPUDevice::newUserClient" | BINARY FOUND, IMPACT UNVERIFIED | `fcn.fffffff009c133bc` checks AMFI for this property; if absent returns 0 → `newUserClient` returns `0xe00002e2`; unknown if ResearchHost entitlements satisfy this
